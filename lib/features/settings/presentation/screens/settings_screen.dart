@@ -17,6 +17,7 @@ import '../../../hardware/presentation/screens/hardware_management_screen.dart';
 import '../../../../core/services/screenshot_service.dart';
 import '../../../../core/services/ai_floating_settings_service.dart';
 import '../widgets/update_checker_card.dart';
+import '../widgets/cloud_sync_card.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -120,6 +121,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   const UpdateCheckerCard(),
+                  const CloudSyncCard(),
                   Card(
                     color: Colors.teal.shade50,
                     shape: RoundedRectangleBorder(
