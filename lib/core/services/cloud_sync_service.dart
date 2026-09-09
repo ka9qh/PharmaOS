@@ -197,6 +197,44 @@ class CloudSyncService {
         }
       }
 
+      // 4. مزامنة الأدوية مع الباركودات المحدثة (Cloud Medicines)
+      final activeMedicines = await (db.select(db.medicines)
+            ..where((m) => m.barcode.isNotNull() | m.sku.isNotNull())
+            ..limit(100))
+          .get();
+
+      if (activeMedicines.isNotEmpty) {
+        final medsPayload = activeMedicines.map((m) {
+          return {
+            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 1,
+            'local_id': m.id,
+            'name_ar': m.nameAr,
+            'name_en': m.nameEn,
+            'name_scientific': m.nameScientific,
+            'barcode': m.barcode,
+            'sku': m.sku,
+            'selling_price': m.sellingPrice,
+            'purchase_price': m.purchasePrice,
+            'reorder_level': m.reorderLevel,
+          };
+        }).toList();
+
+        final res = await http
+            .post(
+              Uri.parse('$supabaseUrl/rest/v1/cloud_medicines'),
+              headers: {
+                ...headers,
+                'Prefer': 'resolution=merge-duplicates',
+              },
+              body: jsonEncode(medsPayload),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
+          syncedMedsCount = activeMedicines.length;
+        }
+      }
+
       // حفظ تاريخ آخر مزامنة
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefLastSyncTime, DateTime.now().toIso8601String());
