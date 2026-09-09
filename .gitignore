@@ -1,0 +1,33 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+
+# ملفات مولدة تلقائيًا
+*.g.dart
+*.freezed.dart
+
+# قاعدة البيانات المحلية - لا يجب رفعها أبدًا لأي مستودع مشترك (بيانات حساسة لكل صيدلية)
+*.db
+*.sqlite
+
+# النسخ الاحتياطية المحلية
+/backups_local/
+/build_backups/
+
+# ملفات الترخيص الخاصة بكل صيدلية
+*.license
+
+# الملفات المؤقتة والأرشيفات الكبيرة وبيانات الاستيراد الضخمة
+*.tar.gz
+*.tgz
+*.zip
+*.log
+/assets/data/
+/seed_data/
+*.xlsx
+*.csv
+
+

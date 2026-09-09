@@ -1,0 +1,10 @@
+{
+  "latest_version": "1.0.2",
+  "build_number": 2,
+  "release_date": "2026-09-09",
+  "download_url": "https://github.com/ka9qh/PharmaOS/releases/download/v1.0.2/pharmaos_update_v1.0.2.zip",
+  "changelog_ar": "• إضافة نظام التحديثات التلقائية عن بعد (OTA)\n• إضافة هيكل التراخيص وتعدد الصيدليات والفروع (Multi-Tenant)\n• تحسينات شاملة في دقة تسعير الوحدات والمطابقة المالية",
+  "sha256": "15dd71e5939f4f6a1982048e0f3f8c2cc212667decb27354abf1fec917217cf4",
+  "package_size_bytes": 25510780,
+  "is_mandatory": false
+}

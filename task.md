@@ -1,0 +1,10 @@
+- `[x]` **Phase 3: AI Invoice Processing**
+  - `[x]` Update database schema with `invoiceImagePath`.
+  - `[x]` Enhance `GeminiOnlineAiService` for JSON extraction.
+  - `[x]` Create `AiInvoiceScannerScreen`.
+  - `[x]` Integrate AI scanner into `PurchaseFormScreen`.
+- `[ ]` **Phase 5: Comprehensive Supplier Profile**
+  - `[ ]` Update `SuppliersDataSource` to fetch balances and history.
+  - `[ ]` Create `SupplierProfileScreen` with tabs (Ledger, Invoices, Medicines).
+  - `[ ]` Wire navigation from Suppliers list to the profile screen.
+  - `[ ]` Sync new supplier to General Ledger.

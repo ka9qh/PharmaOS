@@ -1,0 +1,94 @@
+name: pharmaos
+description: "PharmaOS - نظام إدارة صيدلية متكامل يعمل بالكامل دون إنترنت (Offline-First Pharmacy ERP)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+# ============================================================
+# تفعيل التشفير عبر SQLite3MultipleCiphers (الطريقة الحديثة الرسمية
+# الموصى بها من Drift بدلاً من sqlcipher_flutter_libs المهجورة)
+# راجع: docs/DATABASE_DESIGN.md و docs/SECURITY_GUIDELINES.md
+# ============================================================
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # إدارة الحالة
+  flutter_riverpod: ^2.5.0
+  riverpod_annotation: ^2.3.0
+
+  # التوجيه
+  go_router: ^14.0.0
+
+  # حقن الاعتماديات
+  get_it: ^7.7.0
+
+  # قاعدة البيانات المحلية المشفرة (Drift 2.32.0+ مطلوب لدعم sqlite3mc)
+  drift: ^2.20.0
+  sqlite3: ^2.9.4
+  path_provider: ^2.1.3
+  path: ^1.9.0
+
+  # الأمان
+  bcrypt: ^1.1.3
+  crypto: ^3.0.3
+
+  # الباركود
+  barcode: ^2.2.8
+  barcode_widget: ^2.0.4
+  qr_flutter: ^4.1.0
+
+  # التقارير
+  pdf: ^3.11.0
+  printing: ^5.13.1
+  excel: ^4.0.2
+
+  # اختيار ملفات من الجهاز (جديدة - لشاشة استيراد الأدوية من Excel في
+  # الإعدادات). تحقّق من pub.dev لآخر إصدار متوافق قبل flutter pub get - لم
+  # أستطع التحقق من رقم إصدار دقيق هنا (لا يوجد اتصال إنترنت في بيئة العمل).
+  file_picker: ^8.0.0
+
+  # قراءة ملفات CSV - المسار الموصى به لاستيراد الأدوية (أكثر موثوقية من
+  # .xlsx مع بعض الملفات، راجع core/services/medicine_excel_import_service.dart)
+  csv: ^6.0.0
+
+  # تنسيق التاريخ/اللغة العربية
+  intl: ^0.20.2
+
+  cupertino_icons: ^1.0.8
+  screenshot: ^3.0.0
+  window_manager: ^0.5.2
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.9.0
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.2
+  flutter_markdown: ^0.7.7+1
+  google_generative_ai: ^0.4.7
+  fl_chart: ^1.1.0
+  image_picker: ^1.2.1
+
+dev_dependencies:
+  freezed: 3.1.0
+  json_serializable: ^6.9.0
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+  drift_dev: ^2.20.0
+  riverpod_generator: ^2.4.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/images/
+    - assets/data/
