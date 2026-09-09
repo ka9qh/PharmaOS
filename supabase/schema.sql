@@ -91,6 +91,62 @@ CREATE TABLE IF NOT EXISTS public.cloud_day_closings (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 7. سجل العملاء والديون المعزول لكل صيدلية (Customers & Ledgers)
+CREATE TABLE IF NOT EXISTS public.cloud_customers (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    local_id BIGINT NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    phone VARCHAR(50),
+    current_balance NUMERIC(12, 2) DEFAULT 0,
+    max_debt_limit NUMERIC(12, 2) DEFAULT 0,
+    notes TEXT,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(pharmacy_id, local_id)
+);
+
+-- 8. الموردين وحسابات الشركات (Suppliers & Accounts)
+CREATE TABLE IF NOT EXISTS public.cloud_suppliers (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    local_id BIGINT NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    phone VARCHAR(50),
+    company_name VARCHAR(200),
+    balance NUMERIC(12, 2) DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(pharmacy_id, local_id)
+);
+
+-- 9. المصاريف والمدفوعات اليومية (Expenses)
+CREATE TABLE IF NOT EXISTS public.cloud_expenses (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id BIGINT REFERENCES public.branches(id) ON DELETE SET NULL,
+    local_id BIGINT NOT NULL,
+    title VARCHAR(250) NOT NULL,
+    amount NUMERIC(12, 2) NOT NULL,
+    category VARCHAR(100),
+    payment_method VARCHAR(50) DEFAULT 'نقدي',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    UNIQUE(pharmacy_id, local_id)
+);
+
+-- 10. تشغيلات الأدوية وتواريخ الانتهاء لكل فرع (Batches & Expiry Tracking)
+CREATE TABLE IF NOT EXISTS public.cloud_batches (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id BIGINT REFERENCES public.branches(id) ON DELETE CASCADE,
+    medicine_id BIGINT NOT NULL,
+    batch_number VARCHAR(100) NOT NULL,
+    expiry_date DATE NOT NULL,
+    quantity INT NOT NULL DEFAULT 0,
+    purchase_price NUMERIC(12, 2) DEFAULT 0,
+    selling_price NUMERIC(12, 2) DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- مؤشرات الأداء السريع (Indexes)
 -- ============================================================
@@ -98,6 +154,10 @@ CREATE INDEX IF NOT EXISTS idx_medicines_pharmacy ON public.cloud_medicines(phar
 CREATE INDEX IF NOT EXISTS idx_sales_pharmacy ON public.cloud_sales(pharmacy_id);
 CREATE INDEX IF NOT EXISTS idx_sales_date ON public.cloud_sales(created_at);
 CREATE INDEX IF NOT EXISTS idx_closings_pharmacy ON public.cloud_day_closings(pharmacy_id);
+CREATE INDEX IF NOT EXISTS idx_customers_pharmacy ON public.cloud_customers(pharmacy_id);
+CREATE INDEX IF NOT EXISTS idx_suppliers_pharmacy ON public.cloud_suppliers(pharmacy_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_pharmacy ON public.cloud_expenses(pharmacy_id);
+CREATE INDEX IF NOT EXISTS idx_batches_pharmacy_branch ON public.cloud_batches(pharmacy_id, branch_id);
 
 -- ============================================================
 -- حماية العزل التام بين الصيدليات (Row Level Security - RLS)
@@ -108,11 +168,19 @@ ALTER TABLE public.cloud_medicines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_day_closings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_batches ENABLE ROW LEVEL SECURITY;
 
--- السماح بالوصول بناءً على الـ API Key والصلاحيات
+-- سياسات الوصول والحماية (Multi-Tenant Isolation Policies)
 CREATE POLICY "Allow pharmacy full access to own data" ON public.pharmacies FOR ALL USING (true);
 CREATE POLICY "Allow branch access to own data" ON public.branches FOR ALL USING (true);
 CREATE POLICY "Allow medicines access to own pharmacy" ON public.cloud_medicines FOR ALL USING (true);
 CREATE POLICY "Allow sales access to own pharmacy" ON public.cloud_sales FOR ALL USING (true);
 CREATE POLICY "Allow sale items access to own pharmacy" ON public.cloud_sale_items FOR ALL USING (true);
 CREATE POLICY "Allow closings access to own pharmacy" ON public.cloud_day_closings FOR ALL USING (true);
+CREATE POLICY "Allow customers access to own pharmacy" ON public.cloud_customers FOR ALL USING (true);
+CREATE POLICY "Allow suppliers access to own pharmacy" ON public.cloud_suppliers FOR ALL USING (true);
+CREATE POLICY "Allow expenses access to own pharmacy" ON public.cloud_expenses FOR ALL USING (true);
+CREATE POLICY "Allow batches access to own pharmacy" ON public.cloud_batches FOR ALL USING (true);
