@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/medicines_provider.dart';
 import '../widgets/unit_hierarchy_dialog.dart';
 import '../widgets/medicine_clinical_details_dialog.dart';
+import '../widgets/assign_box_barcode_dialog.dart';
 import 'medicine_form_screen.dart';
 import '../../../barcode/presentation/widgets/barcode_widget.dart';
 import '../../../../core/hardware/label_printer_service.dart';
@@ -281,6 +282,19 @@ class _MedicinesScreenState extends ConsumerState<MedicinesScreen> {
                       builder: (_) => MedicineFormScreen(existing: medicine),
                     ),
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF3B82F6), size: 20),
+                  tooltip: 'ربط وتعديل باركود العلبة بالقارئ',
+                  onPressed: () async {
+                    final res = await AssignBoxBarcodeDialog.show(
+                      context,
+                      medicine: medicine,
+                    );
+                    if (res == true) {
+                      ref.read(medicinesNotifierProvider.notifier).loadAll();
+                    }
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.qr_code_2, color: Colors.teal, size: 20),

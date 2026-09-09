@@ -53,6 +53,8 @@ import '../features/reports/presentation/screens/reports_screen.dart';
 import '../features/hardware/presentation/screens/hardware_management_screen.dart';
 import '../features/doctors/presentation/screens/doctors_screen.dart';
 import '../features/prescriptions/presentation/screens/prescriptions_screen.dart';
+import '../features/prescriptions/presentation/screens/tele_consultation_dialog.dart';
+import '../features/owner_app/presentation/screens/owner_portal_screen.dart';
 import '../features/inventory/presentation/screens/inventory_reconciliation_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -258,9 +260,19 @@ class DashboardScreen extends ConsumerWidget {
                 ]),
                 const SizedBox(height: 16),
 
-                // ---------------- أقسام الإدارة الطبية ----------------
-                const DashboardSectionHeader(title: 'الإدارة الطبية والوصفات'),
+                // ---------------- أقسام الإدارة الطبية والربط السحابي ----------------
+                const DashboardSectionHeader(title: 'الربط السحابي، تطبيق المدير، وغرفة الروشتات (Tele-Pharmacy)'),
                 Wrap(children: [
+                  DashboardNavButton(
+                    icon: Icons.wifi_channel_rounded,
+                    label: 'غرفة الروشتات والاستشارات',
+                    onTap: () => TeleConsultationDialog.show(context),
+                  ),
+                  DashboardNavButton(
+                    icon: Icons.phone_android_rounded,
+                    label: 'بوابة وتطبيق المدير السحابي',
+                    onTap: () => _navigate(context, const OwnerPortalScreen()),
+                  ),
                   DashboardNavButton(
                     icon: Icons.receipt_long,
                     label: 'الوصفات الطبية (Prescriptions)',
@@ -272,6 +284,7 @@ class DashboardScreen extends ConsumerWidget {
                     onTap: () => _navigate(context, const DoctorsScreen()),
                   ),
                 ]),
+                const SizedBox(height: 16),
 
                 const DashboardSectionHeader(title: 'المشتريات والموردون وديون الصيدلية'),
                 Wrap(children: [

@@ -218,6 +218,7 @@ class MedicinesRepositoryImpl implements MedicinesRepository {
         cartonPurchasePrice: Value(medicine.cartonPurchasePrice),
         cartonSellingPrice: Value(medicine.cartonSellingPrice),
         reorderLevel: Value(medicine.reorderLevel),
+        barcode: Value(medicine.barcode),
         reserveField1: Value(medicine.reserveField1),
         reserveField2: Value(medicine.reserveField2),
         reserveField3: Value(medicine.reserveField3),
@@ -239,7 +240,19 @@ class MedicinesRepositoryImpl implements MedicinesRepository {
   }
 
   @override
-  Future<void> archive(int id, {int? changedByUserId}) async {}
+  Future<bool> updateBarcode(int medicineId, String newBarcode, {bool forceOverride = false}) async {
+    try {
+      await dataSource.updateBarcode(medicineId, newBarcode, forceOverride: forceOverride);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> archive(int id, {int? changedByUserId}) async {
+    await dataSource.archive(id);
+  }
 
   @override
   Future<void> writeOff(int id, double quantity, String reason, String? notes) async {}

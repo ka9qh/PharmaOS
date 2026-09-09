@@ -147,6 +147,28 @@ CREATE TABLE IF NOT EXISTS public.cloud_batches (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 11. غرفة الاستشارة الطبية المباشرة وقراءة الروشتات (Tele-Pharmacy Consultation Room)
+CREATE TABLE IF NOT EXISTS public.cloud_tele_consultations (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id BIGINT REFERENCES public.branches(id) ON DELETE SET NULL,
+    pharmacist_name VARCHAR(150) NOT NULL,
+    title VARCHAR(250),
+    patient_name VARCHAR(150),
+    notes TEXT,
+    image_base64 TEXT,
+    image_url TEXT,
+    voice_base64 TEXT,
+    status VARCHAR(50) DEFAULT 'pending', -- pending, answered, resolved, cancelled
+    urgency VARCHAR(50) DEFAULT 'normal', -- normal, urgent, critical
+    suggested_medicines TEXT,
+    manager_reply TEXT,
+    manager_name VARCHAR(150),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    answered_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ
+);
+
 -- ============================================================
 -- مؤشرات الأداء السريع (Indexes)
 -- ============================================================
@@ -158,6 +180,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_pharmacy ON public.cloud_customers(phar
 CREATE INDEX IF NOT EXISTS idx_suppliers_pharmacy ON public.cloud_suppliers(pharmacy_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_pharmacy ON public.cloud_expenses(pharmacy_id);
 CREATE INDEX IF NOT EXISTS idx_batches_pharmacy_branch ON public.cloud_batches(pharmacy_id, branch_id);
+CREATE INDEX IF NOT EXISTS idx_tele_consultations_pharmacy ON public.cloud_tele_consultations(pharmacy_id, status);
 
 -- ============================================================
 -- حماية العزل التام بين الصيدليات (Row Level Security - RLS)
@@ -172,6 +195,7 @@ ALTER TABLE public.cloud_customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_tele_consultations ENABLE ROW LEVEL SECURITY;
 
 -- سياسات الوصول والحماية (Multi-Tenant Isolation Policies)
 CREATE POLICY "Allow pharmacy full access to own data" ON public.pharmacies FOR ALL USING (true);
@@ -184,3 +208,5 @@ CREATE POLICY "Allow customers access to own pharmacy" ON public.cloud_customers
 CREATE POLICY "Allow suppliers access to own pharmacy" ON public.cloud_suppliers FOR ALL USING (true);
 CREATE POLICY "Allow expenses access to own pharmacy" ON public.cloud_expenses FOR ALL USING (true);
 CREATE POLICY "Allow batches access to own pharmacy" ON public.cloud_batches FOR ALL USING (true);
+CREATE POLICY "Allow tele consultations access to own pharmacy" ON public.cloud_tele_consultations FOR ALL USING (true);
+

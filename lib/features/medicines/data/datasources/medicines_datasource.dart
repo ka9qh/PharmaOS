@@ -13,6 +13,7 @@ abstract class MedicinesDataSource {
   Future<MedicineRow?> getById(int id);
   Future<MedicineRow> create(MedicinesCompanion companion);
   Future<void> update(int id, MedicinesCompanion companion);
+  Future<void> updateBarcode(int medicineId, String newBarcode, {bool forceOverride = false});
   Future<void> archive(int id);
   Future<List<MedicineRow>> getAlternatives(int medicineId, String scientificName);
   Future<int> autoCleanDuplicates();
@@ -85,6 +86,30 @@ class MedicinesDataSourceImpl implements MedicinesDataSource {
   Future<void> update(int id, MedicinesCompanion companion) {
     return (_db.update(_db.medicines)..where((m) => m.id.equals(id)))
         .write(companion);
+  }
+
+  @override
+  Future<void> updateBarcode(int medicineId, String newBarcode, {bool forceOverride = false}) async {
+    final trimmed = newBarcode.trim();
+    if (trimmed.isEmpty) {
+      await (_db.update(_db.medicines)..where((m) => m.id.equals(medicineId)))
+          .write(const MedicinesCompanion(
+            barcode: Value(''),
+          ));
+      return;
+    }
+
+    if (forceOverride) {
+      // تفريغ الباركود من أي دواء آخر كان يحمله لتجنب تكرار الباركود
+      await (_db.update(_db.medicines)
+            ..where((m) => m.barcode.equals(trimmed) & m.id.equals(medicineId).not()))
+          .write(const MedicinesCompanion(barcode: Value('')));
+    }
+
+    await (_db.update(_db.medicines)..where((m) => m.id.equals(medicineId)))
+        .write(MedicinesCompanion(
+          barcode: Value(trimmed),
+        ));
   }
 
   @override

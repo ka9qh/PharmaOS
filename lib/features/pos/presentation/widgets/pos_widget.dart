@@ -11,6 +11,7 @@ class CartItemRow extends StatelessWidget {
   final void Function(int?, DateTime?)? onBatchChanged;
   final VoidCallback onRemove;
   final VoidCallback onUnitChangeRequested;
+  final VoidCallback? onFindAlternatives;
 
   final int index;
 
@@ -23,6 +24,7 @@ class CartItemRow extends StatelessWidget {
     this.onBatchChanged,
     required this.onRemove,
     required this.onUnitChangeRequested,
+    this.onFindAlternatives,
   });
 
   void _showEditPriceDialog(BuildContext context) {
@@ -330,6 +332,12 @@ class CartItemRow extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                if (onFindAlternatives != null)
+                  IconButton(
+                    icon: const Icon(Icons.swap_horizontal_circle_outlined, size: 20, color: Color(0xFF10B981)),
+                    onPressed: onFindAlternatives,
+                    tooltip: 'البدائل العلمية والمخزنية المتوفرة',
+                  ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
                   onPressed: onRemove,

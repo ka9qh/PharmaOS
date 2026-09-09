@@ -1,0 +1,26 @@
+name: pharmaos_owner_app
+description: "PharmaOS Owner Mobile App - تطبيق إدارة ومراقبة الصيدلية للمدير والروشتات الفورية"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  http: ^1.2.0
+  shared_preferences: ^2.5.3
+  intl: ^0.20.2
+  fl_chart: ^1.1.0
+  cached_network_image: ^3.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

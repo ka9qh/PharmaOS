@@ -53,6 +53,9 @@ class PosCartState {
   final bool taxEnabled;
   final double taxRate;
 
+  // Clinical AI Entities
+  final Map<int, MedicineEntity> medicineEntities;
+
   const PosCartState({
     this.items = const [],
     this.discount = 0,
@@ -75,7 +78,19 @@ class PosCartState {
     this.cashInDrawerTotal = 0,
     this.taxEnabled = false,
     this.taxRate = 15.0,
+    this.medicineEntities = const {},
   });
+
+  List<MedicineEntity> get cartMedicines {
+    final list = <MedicineEntity>[];
+    for (final item in items) {
+      final med = medicineEntities[item.medicineId];
+      if (med != null && !list.any((m) => m.id == med.id)) {
+        list.add(med);
+      }
+    }
+    return list;
+  }
 
   double get subtotal => items.fold(0.0, (sum, i) => sum + i.subtotal);
   
@@ -114,6 +129,7 @@ class PosCartState {
     double? cashInDrawerTotal,
     bool? taxEnabled,
     double? taxRate,
+    Map<int, MedicineEntity>? medicineEntities,
     bool clearError = false,
     bool clearLastCompleted = false,
     bool clearCustomer = false,
@@ -144,6 +160,7 @@ class PosCartState {
       cashInDrawerTotal: cashInDrawerTotal ?? this.cashInDrawerTotal,
       taxEnabled: taxEnabled ?? this.taxEnabled,
       taxRate: taxRate ?? this.taxRate,
+      medicineEntities: medicineEntities ?? this.medicineEntities,
     );
   }
 }
@@ -209,6 +226,9 @@ class PosNotifier extends Notifier<PosCartState> {
     // Check if the exact same unit is already in the cart for this medicine
     final existingIndex = state.items.indexWhere((i) => i.medicineId == medicine.id && i.selectedUnitMultiplier == unitMultiplier);
 
+    final updatedEntities = Map<int, MedicineEntity>.from(state.medicineEntities);
+    updatedEntities[medicine.id] = medicine;
+
     if (existingIndex != -1) {
       final existing = state.items[existingIndex];
       final newSelectedQty = existing.selectedQuantity + selectedQuantity;
@@ -228,7 +248,7 @@ class PosNotifier extends Notifier<PosCartState> {
       
       final updated = [...state.items];
       updated[existingIndex] = existing.copyWith(selectedQuantity: newSelectedQty);
-      state = state.copyWith(items: updated, clearError: true);
+      state = state.copyWith(items: updated, medicineEntities: updatedEntities, clearError: true);
     } else {
       final currentTotalInOtherRows = state.items
           .where((i) => i.medicineId == medicine.id)
@@ -253,7 +273,7 @@ class PosNotifier extends Notifier<PosCartState> {
           selectedUnitMultiplier: unitMultiplier,
           selectedQuantity: selectedQuantity,
         ),
-      ], clearError: true);
+      ], medicineEntities: updatedEntities, clearError: true);
     }
   }
 

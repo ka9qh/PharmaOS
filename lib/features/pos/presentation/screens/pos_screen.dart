@@ -12,6 +12,9 @@ import '../controllers/pos_controller.dart';
 import '../widgets/pos_widget.dart';
 import '../widgets/manual_add_dialog.dart';
 import '../widgets/pos_returns_dialog.dart';
+import '../widgets/bind_unrecognized_barcode_dialog.dart';
+import '../widgets/clinical_interaction_banner.dart';
+import '../widgets/smart_alternatives_dialog.dart';
 import '../../../customers/presentation/providers/customers_provider.dart';
 import '../../../wallets/presentation/providers/wallets_provider.dart';
 import '../../../../core/di/service_locator.dart';
@@ -23,6 +26,7 @@ import '../../../../core/widgets/searchable_entity_picker.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../doctors/presentation/providers/doctors_provider.dart';
 import '../../../prescriptions/presentation/providers/prescriptions_provider.dart';
+import '../../../prescriptions/presentation/screens/tele_consultation_dialog.dart';
 import '../../../sales/domain/repositories/sales_repository.dart';
 import '../../domain/entities/pos_entity.dart';
 
@@ -68,9 +72,24 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         medicines.firstOrNull;
 
     if (medicine == null) {
-      ref.read(posNotifierProvider.notifier).scanBarcodeNotFound(barcode);
       _barcodeController.clear();
-      _barcodeFocusNode.requestFocus();
+      final boundMedicine = await BindUnrecognizedBarcodeDialog.show(
+        context,
+        scannedBarcode: barcode,
+      );
+
+      if (boundMedicine != null && mounted) {
+        await showManualAddToCartDialog(
+          context,
+          initialMedicine: boundMedicine,
+          onAdd: (med, qty, unitName, multiplier, unitPrice) {
+            ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
+            _barcodeFocusNode.requestFocus();
+          },
+        );
+      } else {
+        _barcodeFocusNode.requestFocus();
+      }
       return;
     }
 
@@ -487,6 +506,29 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
   }
 
+  Future<void> _showAlternativesDialog(BuildContext context, CartItem item) async {
+    final medRepo = sl<MedicinesRepository>();
+    final medicine = await medRepo.getById(item.medicineId);
+    if (medicine == null || !context.mounted) return;
+
+    final selectedAlt = await SmartAlternativesDialog.show(
+      context,
+      targetMedicine: medicine,
+    );
+
+    if (selectedAlt != null && mounted) {
+      ref.read(posNotifierProvider.notifier).removeItem(item.medicineId, item.selectedUnitMultiplier);
+      await showManualAddToCartDialog(
+        context,
+        initialMedicine: selectedAlt,
+        onAdd: (med, qty, unitName, multiplier, unitPrice) {
+          ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
+          _barcodeFocusNode.requestFocus();
+        },
+      );
+    }
+  }
+
   Future<void> _checkout() async {
     final state = ref.read(posNotifierProvider);
     final error = PosController.validateDiscount(_discountController.text, state.subtotal);
@@ -598,6 +640,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           ),
           title: const Text('نقطة البيع (POS)'),
           actions: [
+            FilledButton.tonalIcon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                foregroundColor: const Color(0xFF6366F1),
+              ),
+              icon: const Icon(Icons.wifi_channel_rounded),
+              label: const Text('استشارة المدير / قراءة روشتة', style: TextStyle(fontWeight: FontWeight.bold)),
+              onPressed: () => TeleConsultationDialog.show(
+                context,
+                onAddSuggestedMedicineToCart: (medName) => _submitBarcode(medName),
+              ),
+            ),
+            const SizedBox(width: 8),
             FilledButton.tonalIcon(
               style: FilledButton.styleFrom(backgroundColor: Colors.orange.shade50, foregroundColor: Colors.deepOrange),
               icon: const Icon(Icons.keyboard_return),
@@ -754,6 +809,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                         textAlign: TextAlign.center,
                       ),
                     ),
+                  if (state.items.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: ClinicalInteractionBanner(
+                        cartMedicines: state.cartMedicines,
+                      ),
+                    ),
                   Expanded(
                     child: state.items.isEmpty
                         ? Center(
@@ -809,6 +871,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                                                   .read(posNotifierProvider.notifier)
                                                   .removeItem(item.medicineId, item.selectedUnitMultiplier),
                                               onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
+                                              onFindAlternatives: () => _showAlternativesDialog(context, item),
                                             );
                                           },
                                         ),

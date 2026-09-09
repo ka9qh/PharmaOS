@@ -36,6 +36,7 @@ abstract class MedicinesRepository {
   });
 
   Future<void> update(MedicineEntity medicine, {int? changedByUserId});
+  Future<bool> updateBarcode(int medicineId, String newBarcode, {bool forceOverride = false});
   Future<void> archive(int id, {int? changedByUserId});
   Future<void> writeOff(int id, double quantity, String reason, String? notes);
   Future<int> autoCleanDuplicates();
