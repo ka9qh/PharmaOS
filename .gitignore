@@ -27,7 +27,6 @@ build/
 *.log
 /assets/data/
 /seed_data/
-*.xlsx
-*.csv
-
-
+# حزم التطبيقات التنفيذية الكبيرة
+*.apk
+/releases/*.apk

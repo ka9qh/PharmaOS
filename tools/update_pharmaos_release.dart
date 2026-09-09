@@ -47,7 +47,25 @@ void main() async {
     print('✅ Copied healthy pre-seeded database (pharmaos_secure.db) to PharmaOS_Release');
   }
 
-  // 3. Create clean batch launcher
+  // 3. Copy Mobile Owner APK if present
+  final rootApk = File(p.join(Directory.current.path, 'releases', 'PharmaOS_Owner.apk'));
+  final buildApk = File(p.join(Directory.current.path, 'mobile', 'pharmaos_owner_app', 'build', 'app', 'outputs', 'flutter-apk', 'app-release.apk'));
+  
+  if (await buildApk.exists()) {
+    final destApk = File(p.join(targetDir.path, 'تطبيق_المدير_PharmaOS_Owner.apk'));
+    await buildApk.copy(destApk.path);
+    // Also mirror to releases/
+    final relDir = Directory(p.join(Directory.current.path, 'releases'));
+    if (!await relDir.exists()) await relDir.create(recursive: true);
+    await buildApk.copy(rootApk.path);
+    print('✅ Copied Android Owner APK (تطبيق_المدير_PharmaOS_Owner.apk) to PharmaOS_Release');
+  } else if (await rootApk.exists()) {
+    final destApk = File(p.join(targetDir.path, 'تطبيق_المدير_PharmaOS_Owner.apk'));
+    await rootApk.copy(destApk.path);
+    print('✅ Copied Android Owner APK from releases to PharmaOS_Release');
+  }
+
+  // 4. Create clean batch launcher
   final batFile = File(p.join(targetDir.path, 'تشغيل_نظام_الصيدلية.bat'));
   await batFile.writeAsString('''@echo off
 chcp 65001 > nul

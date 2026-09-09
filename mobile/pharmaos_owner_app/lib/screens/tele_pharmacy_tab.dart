@@ -1,7 +1,7 @@
 // تبويب غرفة الروشتات والاستشارات الطبية الفورية - PharmaOS Owner App
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' as intl;
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import 'prescription_viewer_screen.dart';
@@ -188,7 +188,7 @@ class _TelePharmacyTabState extends State<TelePharmacyTab> {
                           separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (ctx, index) {
                             final item = _consultations[index];
-                            final timeStr = DateFormat('hh:mm a - yyyy/MM/dd').format(item.createdAt);
+                            final timeStr = intl.DateFormat('hh:mm a - yyyy/MM/dd').format(item.createdAt);
                             final isPending = item.status == 'pending';
 
                             return Container(

@@ -116,7 +116,7 @@ class _DashboardTabState extends State<DashboardTab> {
                             offset: const Offset(0, 8),
                           ),
                         ],
-                      ],
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
