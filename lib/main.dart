@@ -15,6 +15,8 @@ import 'core/services/official_date_time_service.dart';
 import 'core/services/multi_destination_backup_service.dart';
 import 'core/services/cloud_backup_service.dart';
 import 'core/widgets/pre_exit_backup_dialog.dart';
+import 'core/services/owner_live_sync_service.dart';
+import 'core/widgets/owner_floating_notification.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +39,10 @@ Future<void> main() async {
   // 2) تهيئة خدمة الوقت والتاريخ الرسمي ورصد منتصف الليل التلقائي
   OfficialDateTimeService.initialize();
 
-  // 3) التحقق من زراعة قاعدة البيانات والمزامنة السحابية في الخلفية
+  // 3) تشغيل محرك المزامنة الحية المباشرة مع تطبيق المدير
+  OwnerLiveSyncService.start();
+
+  // 4) التحقق من زراعة قاعدة البيانات والمزامنة السحابية في الخلفية
   Future.microtask(() async {
     try {
       final seeder = sl<DatabaseSeederService>();
@@ -49,14 +54,16 @@ Future<void> main() async {
     }
   });
 
-  // 4) فتح مسار التطبيق الأساسي
+  // 5) فتح مسار التطبيق الأساسي
   final router = AppRouter.build(initialLocation: '/login');
 
   runApp(
     ProviderScope(
       child: PharmaOSApp(
         router: router,
-        builder: (context, child) => AppScreenshotWrapper(child: child!),
+        builder: (context, child) => OwnerFloatingNotificationOverlay(
+          child: AppScreenshotWrapper(child: child!),
+        ),
       ),
     ),
   );

@@ -1,9 +1,14 @@
 // شاشة التنقل الرئيسية لتطبيق المدير - PharmaOS Owner App
 import 'package:flutter/material.dart';
 import 'dashboard_tab.dart';
+import 'live_screen_cctv_screen.dart';
+import 'remote_purchases_screen.dart';
+import 'remote_inventory_screen.dart';
+import 'live_chat_screen.dart';
+import 'remote_backup_reports_screen.dart';
 import 'tele_pharmacy_tab.dart';
-import 'medicines_tab.dart';
 import 'settings_tab.dart';
+import '../theme/owner_theme.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -17,8 +22,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     DashboardTab(),
+    LiveScreenCctvScreen(),
+    RemotePurchasesScreen(),
+    RemoteInventoryScreen(),
+    LiveChatScreen(),
+    RemoteBackupReportsScreen(),
     TelePharmacyTab(),
-    MedicinesTab(),
     SettingsTab(),
   ];
 
@@ -32,34 +41,55 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           children: _screens,
         ),
         bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+          decoration: const BoxDecoration(
+            color: OwnerTheme.darkCard,
+            border: Border(top: BorderSide(color: OwnerTheme.surfaceBorder, width: 1)),
           ),
           child: NavigationBar(
-            backgroundColor: const Color(0xFF1E293B),
-            indicatorColor: const Color(0xFF6366F1).withOpacity(0.3),
+            backgroundColor: OwnerTheme.darkCard,
+            indicatorColor: OwnerTheme.primaryEmerald.withOpacity(0.35),
             selectedIndex: _currentIndex,
             onDestinationSelected: (index) => setState(() => _currentIndex = index),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             destinations: const [
               NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.dashboard_rounded, color: Colors.cyanAccent),
+                icon: Icon(Icons.dashboard_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.dashboard_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
                 label: 'المبيعات',
               ),
               NavigationDestination(
-                icon: Icon(Icons.wifi_channel_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.wifi_channel_rounded, color: Colors.cyanAccent),
+                icon: Icon(Icons.videocam_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.videocam_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
+                label: 'البث الحي',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.receipt_long_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
+                label: 'فواتير الشراء',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.table_chart_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.table_chart_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
+                label: 'المخزون',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.forum_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.forum_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
+                label: 'الدردشة',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.cloud_done_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.cloud_done_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
+                label: 'النسخ والتقارير',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.wifi_channel_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.wifi_channel_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
                 label: 'الروشتات',
               ),
               NavigationDestination(
-                icon: Icon(Icons.medication_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.medication_rounded, color: Colors.cyanAccent),
-                label: 'الأدوية',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined, color: Colors.grey),
-                selectedIcon: Icon(Icons.settings_rounded, color: Colors.cyanAccent),
+                icon: Icon(Icons.settings_outlined, color: Colors.white54, size: 22),
+                selectedIcon: Icon(Icons.settings_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
                 label: 'الإعدادات',
               ),
             ],

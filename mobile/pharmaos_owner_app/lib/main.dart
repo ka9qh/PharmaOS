@@ -5,6 +5,8 @@ import 'services/owner_api_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
 
+import 'theme/owner_theme.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = await OwnerApiService.getConfig();
@@ -21,16 +23,7 @@ class PharmaOSOwnerApp extends StatelessWidget {
     return MaterialApp(
       title: 'PharmaOS Owner',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0F172A),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1),
-          brightness: Brightness.dark,
-        ),
-        fontFamily: 'Cairo',
-      ),
+      theme: OwnerTheme.themeData,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

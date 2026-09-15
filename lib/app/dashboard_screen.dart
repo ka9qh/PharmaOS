@@ -9,13 +9,13 @@ import 'package:go_router/go_router.dart';
 import '../features/notifications/presentation/widgets/notifications_widget.dart';
 import '../features/dashboard/presentation/widgets/dashboard_widget.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
-import '../core/security/role_guard.dart';
 import '../features/reports/presentation/providers/reports_provider.dart';
 import '../features/analytics/presentation/providers/analytics_provider.dart';
 import '../features/stock_alerts/presentation/providers/stock_alerts_provider.dart';
 import '../features/notifications/presentation/providers/notifications_provider.dart';
 import '../features/audit_logs/presentation/providers/audit_logs_provider.dart';
-import '../features/audit_logs/presentation/widgets/audit_logs_widget.dart';
+import '../core/widgets/owner_floating_notification.dart';
+import '../features/chat/presentation/screens/desktop_live_chat_screen.dart';
 
 import '../features/medicines/presentation/screens/medicines_screen.dart';
 import '../features/categories/presentation/screens/categories_screen.dart';
@@ -24,14 +24,10 @@ import '../features/inventory/presentation/screens/inventory_screen.dart';
 import '../features/suppliers/presentation/screens/suppliers_screen.dart';
 import '../features/purchases/presentation/screens/purchases_screen.dart';
 import '../features/purchases/presentation/screens/vendor_payments_screen.dart';
-import '../features/cash_register/presentation/screens/cash_register_screen.dart';
 import '../features/invoices/presentation/screens/invoices_screen.dart';
 import '../features/expenses/presentation/screens/expenses_screen.dart';
-import '../features/returns/presentation/screens/returns_screen.dart';
 import '../features/closing/presentation/screens/daily_closing_screen.dart';
 import '../features/analytics/presentation/screens/analytics_screen.dart';
-import '../features/ai/presentation/screens/ai_screen.dart';
-import '../features/ai/presentation/screens/ai_chat_screen.dart';
 import '../features/stock_alerts/presentation/screens/stock_alerts_screen.dart';
 import '../features/notifications/presentation/screens/notifications_screen.dart';
 import '../features/audit_logs/presentation/screens/audit_logs_screen.dart';
@@ -91,6 +87,37 @@ class DashboardScreen extends ConsumerWidget {
             ],
           ),
           actions: [
+            ValueListenableBuilder<int>(
+              valueListenable: OwnerFloatingNotification.unreadMessagesCount,
+              builder: (context, unread, _) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'الدردشة الحية مع المدير العام',
+                      icon: const Icon(Icons.forum_rounded, color: Color(0xFF0D9488)),
+                      onPressed: () => _navigate(context, const DesktopLiveChatScreen()),
+                    ),
+                    if (unread > 0)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$unread',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
             NotificationBellIcon(
               count: notificationsState.count,
               onTap: () => _navigate(context, const NotificationsScreen()),

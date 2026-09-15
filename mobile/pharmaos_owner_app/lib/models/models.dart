@@ -1,4 +1,6 @@
-// نماذج بيانات تطبيق المدير المحمول - PharmaOS Owner App
+// نماذج بيانات تطبيق المدير المحمول المحدثة الشاملة - PharmaOS Owner App
+import 'dart:convert';
+
 class OwnerTenantConfig {
   final int pharmacyId;
   final String pharmacyName;
@@ -6,6 +8,7 @@ class OwnerTenantConfig {
   final String managerName;
   final String supabaseUrl;
   final String supabaseKey;
+  final List<String> branches;
 
   OwnerTenantConfig({
     required this.pharmacyId,
@@ -14,6 +17,7 @@ class OwnerTenantConfig {
     required this.managerName,
     this.supabaseUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
     this.supabaseKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+    this.branches = const ['الفرع الرئيسي'],
   });
 }
 
@@ -115,6 +119,8 @@ class CloudMedicine {
   final String? sku;
   final double sellingPrice;
   final double purchasePrice;
+  final int availableQuantity;
+  final int reorderLevel;
 
   CloudMedicine({
     required this.id,
@@ -126,12 +132,14 @@ class CloudMedicine {
     this.sku,
     required this.sellingPrice,
     required this.purchasePrice,
+    this.availableQuantity = 0,
+    this.reorderLevel = 5,
   });
 
   factory CloudMedicine.fromJson(Map<String, dynamic> json) {
     return CloudMedicine(
-      id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
-      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id'].toString()) ?? 1,
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
       nameAr: json['name_ar'] ?? '',
       nameEn: json['name_en'],
       nameScientific: json['name_scientific'],
@@ -139,8 +147,276 @@ class CloudMedicine {
       sku: json['sku'],
       sellingPrice: (json['selling_price'] != null) ? (double.tryParse(json['selling_price'].toString()) ?? 0.0) : 0.0,
       purchasePrice: (json['purchase_price'] != null) ? (double.tryParse(json['purchase_price'].toString()) ?? 0.0) : 0.0,
+      availableQuantity: json['available_quantity'] is int ? json['available_quantity'] : int.tryParse(json['available_quantity']?.toString() ?? '0') ?? 0,
+      reorderLevel: json['reorder_level'] is int ? json['reorder_level'] : int.tryParse(json['reorder_level']?.toString() ?? '5') ?? 5,
     );
   }
+}
+
+class CloudSupplier {
+  final int id;
+  final int pharmacyId;
+  final String name;
+  final String? contactInfo;
+  final String? notes;
+  final bool isActive;
+
+  CloudSupplier({
+    required this.id,
+    required this.pharmacyId,
+    required this.name,
+    this.contactInfo,
+    this.notes,
+    this.isActive = true,
+  });
+
+  factory CloudSupplier.fromJson(Map<String, dynamic> json) {
+    return CloudSupplier(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
+      name: json['name'] ?? '',
+      contactInfo: json['contact_info'],
+      notes: json['notes'],
+      isActive: json['is_active'] ?? true,
+    );
+  }
+}
+
+class CloudBackupRecord {
+  final String id;
+  final String fileName;
+  final int fileSize;
+  final DateTime createdAt;
+  final String type; // local, cloud, telegram_vault
+  final String summaryText;
+
+  CloudBackupRecord({
+    required this.id,
+    required this.fileName,
+    required this.fileSize,
+    required this.createdAt,
+    required this.type,
+    required this.summaryText,
+  });
+
+  factory CloudBackupRecord.fromJson(Map<String, dynamic> json) {
+    return CloudBackupRecord(
+      id: json['id']?.toString() ?? 'bk-${DateTime.now().millisecondsSinceEpoch}',
+      fileName: json['file_name'] ?? 'PharmaOS_Backup.pharmaos_backup',
+      fileSize: json['file_size'] is int ? json['file_size'] : int.tryParse(json['file_size']?.toString() ?? '0') ?? 0,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
+      type: json['type'] ?? 'cloud',
+      summaryText: json['summary_text'] ?? 'نسخة احتياطية شاملة مشفرة',
+    );
+  }
+}
+
+class StreamFrame {
+  final String channel; // screen, camera
+  final int pharmacyId;
+  final String branchId;
+  final String deviceId;
+  final String frameBase64;
+  final int fps;
+  final DateTime timestamp;
+
+  StreamFrame({
+    required this.channel,
+    required this.pharmacyId,
+    required this.branchId,
+    required this.deviceId,
+    required this.frameBase64,
+    this.fps = 15,
+    required this.timestamp,
+  });
+
+  factory StreamFrame.fromJson(Map<String, dynamic> json) {
+    return StreamFrame(
+      channel: json['channel'] ?? 'screen',
+      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
+      branchId: json['branch_id']?.toString() ?? 'main',
+      deviceId: json['device_id']?.toString() ?? 'dev-1',
+      frameBase64: json['frame_base64'] ?? '',
+      fps: json['fps'] is int ? json['fps'] : int.tryParse(json['fps']?.toString() ?? '15') ?? 15,
+      timestamp: json['timestamp'] != null ? DateTime.tryParse(json['timestamp']) ?? DateTime.now() : DateTime.now(),
+    );
+  }
+}
+
+class RemotePurchaseItem {
+  final int? medicineId;
+  final String medicineName;
+  final String? barcode;
+  final String batchNumber;
+  final DateTime expiryDate;
+  final int quantity;
+  final double purchasePrice;
+  final double sellingPrice;
+  final double discount;
+
+  RemotePurchaseItem({
+    this.medicineId,
+    required this.medicineName,
+    this.barcode,
+    required this.batchNumber,
+    required this.expiryDate,
+    required this.quantity,
+    required this.purchasePrice,
+    required this.sellingPrice,
+    this.discount = 0.0,
+  });
+
+  factory RemotePurchaseItem.fromJson(Map<String, dynamic> json) {
+    return RemotePurchaseItem(
+      medicineId: json['medicine_id'] != null ? int.tryParse(json['medicine_id'].toString()) : null,
+      medicineName: json['medicine_name'] ?? '',
+      barcode: json['barcode'],
+      batchNumber: json['batch_number'] ?? '',
+      expiryDate: json['expiry_date'] != null ? DateTime.tryParse(json['expiry_date']) ?? DateTime.now() : DateTime.now(),
+      quantity: json['quantity'] is int ? json['quantity'] : int.tryParse(json['quantity']?.toString() ?? '1') ?? 1,
+      purchasePrice: (json['purchase_price'] != null) ? (double.tryParse(json['purchase_price'].toString()) ?? 0.0) : 0.0,
+      sellingPrice: (json['selling_price'] != null) ? (double.tryParse(json['selling_price'].toString()) ?? 0.0) : 0.0,
+      discount: (json['discount'] != null) ? (double.tryParse(json['discount'].toString()) ?? 0.0) : 0.0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'medicine_id': medicineId,
+        'medicine_name': medicineName,
+        'barcode': barcode,
+        'batch_number': batchNumber,
+        'expiry_date': expiryDate.toIso8601String(),
+        'quantity': quantity,
+        'purchase_price': purchasePrice,
+        'selling_price': sellingPrice,
+        'discount': discount,
+      };
+}
+
+class RemotePurchaseInvoice {
+  final String invoiceNumber;
+  final int? supplierId;
+  final String supplierName;
+  final DateTime invoiceDate;
+  final DateTime? dueDate;
+  final String paymentType; // cash, credit
+  final String? notes;
+  final List<RemotePurchaseItem> items;
+  final double totalAmount;
+  final double discount;
+  final double paidAmount;
+
+  RemotePurchaseInvoice({
+    required this.invoiceNumber,
+    this.supplierId,
+    required this.supplierName,
+    required this.invoiceDate,
+    this.dueDate,
+    this.paymentType = 'cash',
+    this.notes,
+    required this.items,
+    required this.totalAmount,
+    this.discount = 0.0,
+    required this.paidAmount,
+  });
+
+  factory RemotePurchaseInvoice.fromJson(Map<String, dynamic> json) {
+    var rawItems = json['items'];
+    List<RemotePurchaseItem> parsed = [];
+    if (rawItems is List) {
+      parsed = rawItems.map((e) => RemotePurchaseItem.fromJson(Map<String, dynamic>.from(e))).toList();
+    }
+
+    return RemotePurchaseInvoice(
+      invoiceNumber: json['invoice_number'] ?? 'PUR-${DateTime.now().millisecondsSinceEpoch}',
+      supplierId: json['supplier_id'] != null ? int.tryParse(json['supplier_id'].toString()) : null,
+      supplierName: json['supplier_name'] ?? 'مورد عام',
+      invoiceDate: json['invoice_date'] != null ? DateTime.tryParse(json['invoice_date']) ?? DateTime.now() : DateTime.now(),
+      dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date']) : null,
+      paymentType: json['payment_type'] ?? 'cash',
+      notes: json['notes'],
+      items: parsed,
+      totalAmount: (json['total_amount'] != null) ? (double.tryParse(json['total_amount'].toString()) ?? 0.0) : 0.0,
+      discount: (json['discount'] != null) ? (double.tryParse(json['discount'].toString()) ?? 0.0) : 0.0,
+      paidAmount: (json['paid_amount'] != null) ? (double.tryParse(json['paid_amount'].toString()) ?? 0.0) : 0.0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'invoice_number': invoiceNumber,
+        'supplier_id': supplierId,
+        'supplier_name': supplierName,
+        'invoice_date': invoiceDate.toIso8601String(),
+        'due_date': dueDate?.toIso8601String(),
+        'payment_type': paymentType,
+        'notes': notes,
+        'items': items.map((e) => e.toJson()).toList(),
+        'total_amount': totalAmount,
+        'discount': discount,
+        'paid_amount': paidAmount,
+      };
+}
+
+class ChatMessage {
+  final String id;
+  final int pharmacyId;
+  final String? branchId;
+  final String? deviceId;
+  final String senderName;
+  final String senderRole; // owner, cashier, pharmacist
+  final String text;
+  final String? audioBase64;
+  final String? imageBase64;
+  final String? imageUrl;
+  final bool isRead;
+  final DateTime createdAt;
+
+  ChatMessage({
+    required this.id,
+    required this.pharmacyId,
+    this.branchId,
+    this.deviceId,
+    required this.senderName,
+    required this.senderRole,
+    required this.text,
+    this.audioBase64,
+    this.imageBase64,
+    this.imageUrl,
+    this.isRead = false,
+    required this.createdAt,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      id: json['id']?.toString() ?? 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
+      branchId: json['branch_id']?.toString(),
+      deviceId: json['device_id']?.toString(),
+      senderName: json['sender_name'] ?? 'مستخدم',
+      senderRole: json['sender_role'] ?? 'cashier',
+      text: json['text'] ?? '',
+      audioBase64: json['audio_base64'],
+      imageBase64: json['image_base64'],
+      imageUrl: json['image_url'],
+      isRead: json['is_read'] == true || json['is_read'] == 1,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'pharmacy_id': pharmacyId,
+        'branch_id': branchId,
+        'device_id': deviceId,
+        'sender_name': senderName,
+        'sender_role': senderRole,
+        'text': text,
+        'audio_base64': audioBase64,
+        'image_base64': imageBase64,
+        'image_url': imageUrl,
+        'is_read': isRead,
+        'created_at': createdAt.toIso8601String(),
+      };
 }
 
 class OwnerTeleConsultation {
