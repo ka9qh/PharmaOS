@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/di/service_locator.dart';
 import '../core/services/database_seeder_service.dart';
+import '../core/services/device_branch_manager_service.dart';
 import '../features/accounting/domain/repositories/general_ledger_repository.dart';
 import '../features/licensing/domain/repositories/licensing_repository.dart';
 
@@ -88,12 +89,13 @@ class _SplashLoadingScreenState extends State<SplashLoadingScreen>
       await Future.delayed(const Duration(milliseconds: 400));
 
       final isLicensed = await sl<LicensingRepository>().hasValidLicense();
+      final isFirstRunDone = await DeviceBranchManagerService.isFirstRunCompleted();
 
       if (mounted) {
-        if (isLicensed) {
-          context.go('/login');
+        if (!isLicensed || !isFirstRunDone) {
+          context.go('/onboarding');
         } else {
-          context.go('/activation');
+          context.go('/login');
         }
       }
     } catch (e) {

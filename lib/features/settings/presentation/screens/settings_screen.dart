@@ -18,6 +18,7 @@ import '../../../../core/services/screenshot_service.dart';
 import '../../../../core/services/ai_floating_settings_service.dart';
 import '../widgets/update_checker_card.dart';
 import '../widgets/cloud_sync_card.dart';
+import 'devices_branches_management_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -309,6 +310,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         onPressed: () => Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => const HardwareManagementScreen()),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SettingsSectionCard(
+                    title: 'إدارة بنية الأجهزة والفروع ورموز الاقتران',
+                    children: [
+                      const Text(
+                        'تحديد نمط تشغيل المنظومة (جهاز مستقل / شبكة كاشيرات / فروع متعددة)، وإدارة وتوليد رموز الاقتران لنقاط البيع.',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.hub_rounded),
+                        label: const Text('فتح استوديو إدارة الأجهزة ونقاط البيع والفروع'),
+                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A)),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const DevicesBranchesManagementScreen()),
                         ),
                       ),
                     ],

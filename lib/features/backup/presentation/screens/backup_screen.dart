@@ -9,6 +9,7 @@ import '../providers/backup_provider.dart';
 import '../widgets/backup_widget.dart';
 import '../../../../core/services/cloud_backup_service.dart';
 import '../../../../core/services/google_drive_service.dart';
+import '../../../../core/services/multi_destination_backup_service.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
   const BackupScreen({super.key});
@@ -174,7 +175,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   Future<void> _exportLocalBackup() async {
     setState(() => _isExportingLocal = true);
     try {
-      final file = await CloudBackupService.createPharmacyBackupFile();
+      final result = await MultiDestinationBackupService.performFullBackup(
+        triggerReason: 'طلب يدوي من شاشة النسخ الاحتياطي',
+      );
       if (mounted) {
         setState(() => _isExportingLocal = false);
         ref.read(backupNotifierProvider.notifier).loadAll();
@@ -186,21 +189,22 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: const Row(
                 children: [
-                  Icon(Icons.shield, color: Colors.green),
+                  Icon(Icons.shield_rounded, color: Colors.green),
                   SizedBox(width: 8),
-                  Text('تم إنشاء نسخة الأمان بنجاح'),
+                  Text('تم إصدار النسخة الاحتياطية بنجاح'),
                 ],
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('تم حفظ نسخة صيدليتك بنجاح على سطح المكتب:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('تم حفظ وتأمين نسخة صيدليتك بنجاح عبر القنوات المعتمدة:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  SelectableText(file.path, style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                  if (result.localPath != null)
+                    SelectableText(result.localPath!, style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
                   const SizedBox(height: 12),
                   const Text(
-                    '💡 نصيحة أمان: يمكنك إرسال هذا الملف إلى بريدك الإلكتروني أو الواتساب لحفظ بيانات صيدليتك للأبد.',
+                    '✅ تم تشفير النسخة محلياً ومزامنتها سحابياً لحماية بيانات صيدليتك بشكل كامل.',
                     style: TextStyle(fontSize: 12, color: Colors.green),
                   ),
                 ],
@@ -208,7 +212,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
               actions: [
                 FilledButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('فهمت، حسناً'),
+                  child: const Text('حسناً'),
                 ),
               ],
             ),

@@ -11,8 +11,10 @@ import 'app/app_router.dart';
 import 'core/di/service_locator.dart';
 import 'core/services/database_seeder_service.dart';
 import 'core/widgets/app_screenshot_wrapper.dart';
+import 'core/services/official_date_time_service.dart';
+import 'core/services/multi_destination_backup_service.dart';
 import 'core/services/cloud_backup_service.dart';
-import 'features/closing/domain/services/daily_closing_service.dart';
+import 'core/widgets/pre_exit_backup_dialog.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,10 +32,12 @@ Future<void> main() async {
   });
 
   // 1) فتح قاعدة البيانات المشفرة + تسجيل جميع الاعتماديات (GetIt)
-  // 2) إنشاء حساب "admin" الافتراضي تلقائيًا إذا كانت هذه أول تشغيل للنظام
   await setupServiceLocator();
 
-  // 3) التحقق من زراعة قاعدة البيانات في الخلفية بدون حجب شاشة الدخول
+  // 2) تهيئة خدمة الوقت والتاريخ الرسمي ورصد منتصف الليل التلقائي
+  OfficialDateTimeService.initialize();
+
+  // 3) التحقق من زراعة قاعدة البيانات والمزامنة السحابية في الخلفية
   Future.microtask(() async {
     try {
       final seeder = sl<DatabaseSeederService>();
@@ -45,7 +49,7 @@ Future<void> main() async {
     }
   });
 
-  // 4) فتح شاشة الدخول مباشرة
+  // 4) فتح مسار التطبيق الأساسي
   final router = AppRouter.build(initialLocation: '/login');
 
   runApp(
@@ -57,7 +61,7 @@ Future<void> main() async {
     ),
   );
   
-  // تسجيل مستمع إغلاق النافذة لحفظ الإغلاق اليومي تلقائياً
+  // تسجيل مستمع إغلاق النافذة لتنفيذ النسخ الإلزامي قبل الإغلاق
   windowManager.setPreventClose(true);
   windowManager.addListener(_WindowCloseListener());
 }
@@ -68,13 +72,24 @@ class _WindowCloseListener extends WindowListener {
     bool isPreventClose = await windowManager.isPreventClose();
     if (isPreventClose) {
       try {
-        debugPrint('App closing intercepted. Performing automatic daily closing snapshot...');
-        await DailyClosingService.performDailyClosing(null);
+        debugPrint('App closing intercepted. Triggering mandatory pre-exit backup dialog...');
+        
+        final context = AppRouter.rootNavigatorKey.currentContext;
+        if (context != null && context.mounted) {
+          await PreExitBackupDialog.show(context);
+        } else {
+          // في حال عدم توفر السياق، يتم التنفيذ في الخلفية
+          await MultiDestinationBackupService.performFullBackup(
+            triggerReason: 'نسخ احتياطي إلزامي عند إغلاق النظام (Background Fallback)',
+            isSilent: true,
+          );
+          await windowManager.destroy();
+        }
       } catch (e) {
-        debugPrint('Error during auto daily closing on exit: $e');
-      } finally {
+        debugPrint('Error during pre-exit backup: $e');
         await windowManager.destroy();
       }
     }
   }
 }
+

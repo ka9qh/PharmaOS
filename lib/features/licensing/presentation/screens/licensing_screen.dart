@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/services/device_branch_manager_service.dart';
 
 import '../providers/licensing_provider.dart';
 import '../controllers/licensing_controller.dart';
@@ -33,7 +34,12 @@ class _LicensingScreenState extends ConsumerState<LicensingScreen> {
 
     final ok = await ref.read(licensingNotifierProvider.notifier).activate(_keyController.text.trim());
     if (ok && mounted) {
-      context.go('/login');
+      final isFirstRunDone = await DeviceBranchManagerService.isFirstRunCompleted();
+      if (!isFirstRunDone) {
+        context.go('/onboarding');
+      } else {
+        context.go('/login');
+      }
     }
   }
 
@@ -94,8 +100,14 @@ class _LicensingScreenState extends ConsumerState<LicensingScreen> {
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Text('تفعيل'),
+                                : const Text('تفعيل وتشغيل'),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.auto_awesome_rounded, color: Colors.teal),
+                          label: const Text('تشغيل معالج التهيئة الشامل (Onboarding Wizard)'),
+                          onPressed: () => context.go('/onboarding'),
                         ),
                       ],
                     ),

@@ -15,6 +15,8 @@ import '../features/returns/presentation/screens/purchase_returns_screen.dart';
 import '../features/doctors/presentation/screens/doctors_screen.dart';
 import '../features/prescriptions/presentation/screens/prescriptions_screen.dart';
 import '../features/inventory/presentation/screens/inventory_reconciliation_screen.dart';
+import '../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
+import '../features/settings/presentation/screens/devices_branches_management_screen.dart';
 
 class AppRouter {
   AppRouter._();
@@ -69,6 +71,14 @@ class AppRouter {
         GoRoute(
           path: '/inventory-reconciliation',
           builder: (context, state) => const InventoryReconciliationScreen(),
+        ),
+        GoRoute(
+          path: '/onboarding',
+          builder: (context, state) => const OnboardingWizardScreen(),
+        ),
+        GoRoute(
+          path: '/settings/devices-branches',
+          builder: (context, state) => const DevicesBranchesManagementScreen(),
         ),
       ],
     );
