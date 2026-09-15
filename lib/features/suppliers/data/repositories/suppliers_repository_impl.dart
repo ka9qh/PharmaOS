@@ -8,7 +8,7 @@ import '../../../medicines/domain/entities/medicines_entity.dart';
 
 class SuppliersRepositoryImpl implements SuppliersRepository {
   @override
-  Future<List<dynamic>> getPharmacyDebts() async { return []; }
+  Future<List<dynamic>> getPharmacyDebts() => dataSource.getPharmacyDebts();
   final SuppliersDataSource dataSource;
   SuppliersRepositoryImpl(this.dataSource);
 
