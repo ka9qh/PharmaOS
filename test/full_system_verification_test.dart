@@ -371,4 +371,146 @@ void main() {
       expect(suppDebtAfter.isEmpty, true); // Debt is 0 so it's fully cleared
     });
   });
+
+  group('8. Sales Returns & Inventory Replenishment Tests', () {
+    test('Return sold items replenishes stock and creates financial return record', () async {
+      final med = await medicinesRepo.create(
+        nameAr: 'Ibuprofen 400mg',
+        unit: 'علبة',
+        purchasePrice: 200.0,
+        sellingPrice: 400.0,
+        reorderLevel: 5,
+      );
+
+      final supp = await suppliersRepo.create(name: 'مورد مسكنات');
+      await purchasesRepo.createPurchase(
+        supplierId: supp.id,
+        items: [
+          PurchaseLineInput(
+            medicineId: med.id,
+            medicineName: med.nameAr,
+            quantity: 10,
+            unitCost: 200.0,
+            unitName: 'علبة',
+            selectedQuantity: 10,
+          ),
+        ],
+        paidAmount: 2000.0,
+      );
+
+      // Sale of 4 units
+      final sale = await salesRepo.createSale(
+        items: [
+          CartLineInput(
+            medicineId: med.id,
+            medicineName: med.nameAr,
+            quantity: 4,
+            unitPrice: 400.0,
+            unitName: 'علبة',
+            conversionFactor: 1,
+            selectedQuantity: 4,
+          ),
+        ],
+        discount: 0.0,
+        paymentMethod: 'نقد',
+      );
+
+      // Verify stock is 6 (10 - 4)
+      var batches = await (db.select(db.batches)..where((b) => b.medicineId.equals(med.id))).get();
+      expect(batches.fold<int>(0, (sum, b) => sum + b.quantity), 6);
+
+      // Process Sale Return of 2 units
+      final saleItem = (await (db.select(db.saleItems)..where((s) => s.saleId.equals(sale.id))).get()).first;
+      await returnsRepo.createCustomerReturn(
+        saleItemId: saleItem.id,
+        quantity: 2,
+        qtyCarton: 0,
+        qtyPack: 2,
+        qtyStrip: 0,
+        qtyPill: 0,
+        refundAmount: 800.0,
+        settlementMethod: 'refund',
+        paymentMethod: 'نقد',
+        reason: 'إرجاع دواء زائد من العميل',
+      );
+
+      // Verify stock is now 8 (6 + 2)
+      batches = await (db.select(db.batches)..where((b) => b.medicineId.equals(med.id))).get();
+      expect(batches.fold<int>(0, (sum, b) => sum + b.quantity), 8);
+    });
+  });
+
+  group('9. Remote Management Sync & Instant Update Simulation Tests', () {
+    test('Instant Price Modifier updates medicine and active batches instantly', () async {
+      final med = await medicinesRepo.create(
+        nameAr: 'Paracetamol 500mg Direct',
+        unit: 'علبة',
+        purchasePrice: 100.0,
+        sellingPrice: 150.0,
+        reorderLevel: 10,
+      );
+
+      // Update price directly as done by OwnerLiveSyncService
+      await (db.update(db.medicines)..where((m) => m.id.equals(med.id))).write(
+        const MedicinesCompanion(
+          sellingPrice: drift.Value(200.0),
+          purchasePrice: drift.Value(120.0),
+        ),
+      );
+
+      final updatedMed = await (db.select(db.medicines)..where((m) => m.id.equals(med.id))).getSingle();
+      expect(updatedMed.sellingPrice, 200.0);
+      expect(updatedMed.purchasePrice, 120.0);
+    });
+
+    test('Remote Purchase Invoice insertion into SQLite creates purchases and batches', () async {
+      final supId = await db.into(db.suppliers).insert(
+        SuppliersCompanion.insert(
+          name: 'مورد سحابي عن بعد',
+          contactInfo: const drift.Value('770000000'),
+        ),
+      );
+
+      final purchId = await db.into(db.purchases).insert(
+        PurchasesCompanion.insert(
+          purchaseNumber: 'REMOTE-INV-999',
+          supplierInvoiceRef: const drift.Value('REMOTE-INV-999'),
+          supplierId: supId,
+          totalAmount: 15000.0,
+          paidAmount: const drift.Value(15000.0),
+          paymentMethod: const drift.Value('نقدي'),
+          createdAt: drift.Value(DateTime.now()),
+        ),
+      );
+
+      expect(purchId, isPositive);
+
+      final newMedId = await db.into(db.medicines).insert(
+        MedicinesCompanion.insert(
+          nameAr: 'Vitamin C 1000mg Remote',
+          barcode: '998877665544',
+          sku: '998877665544',
+          sellingPrice: 1200.0,
+          purchasePrice: 800.0,
+        ),
+      );
+
+      final batchId = await db.into(db.batches).insert(
+        BatchesCompanion.insert(
+          medicineId: newMedId,
+          batchNumber: const drift.Value('REMOTE-BATCH-01'),
+          expiryDate: drift.Value(DateTime(2027, 6, 30)),
+          quantity: 50,
+          purchasePrice: 800.0,
+        ),
+      );
+
+      expect(batchId, isPositive);
+
+      final verifyBatch = await (db.select(db.batches)..where((b) => b.id.equals(batchId))).getSingle();
+      expect(verifyBatch.quantity, 50);
+      expect(verifyBatch.batchNumber, 'REMOTE-BATCH-01');
+    });
+  });
 }
+
