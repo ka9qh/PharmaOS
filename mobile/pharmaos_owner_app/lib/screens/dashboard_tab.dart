@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
+import '../services/app_updater_service.dart';
 
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
@@ -19,11 +20,20 @@ class _DashboardTabState extends State<DashboardTab> {
   double _todaySales = 0;
   double _cashInDrawer = 0;
   int _todayInvoicesCount = 0;
+  OwnerAppUpdateInfo? _availableUpdate;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _checkUpdates();
+  }
+
+  Future<void> _checkUpdates() async {
+    final update = await AppUpdaterService.checkForUpdates();
+    if (mounted && update != null) {
+      setState(() => _availableUpdate = update);
+    }
   }
 
   Future<void> _loadData() async {
@@ -81,6 +91,38 @@ class _DashboardTabState extends State<DashboardTab> {
           ],
         ),
         actions: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.system_update_alt_rounded, color: Colors.white),
+                tooltip: 'فحص التحديثات وتنزيل الإصدار الجديد',
+                onPressed: () async {
+                  final update = await AppUpdaterService.checkForUpdates();
+                  if (!mounted) return;
+                  if (update != null) {
+                    setState(() => _availableUpdate = update);
+                    AppUpdaterService.showUpdateDialog(context, update);
+                  } else {
+                    AppUpdaterService.showNoUpdateDialog(context);
+                  }
+                },
+              ),
+              if (_availableUpdate != null)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF10B981),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Text('!', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white),
             tooltip: 'تحديث البيانات اللحظية',
@@ -99,6 +141,79 @@ class _DashboardTabState extends State<DashboardTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // إشعار التحديث العائم في حال توفر إصدار جديد
+                    if (_availableUpdate != null) ...[
+                      InkWell(
+                        onTap: () => AppUpdaterService.showUpdateDialog(context, _availableUpdate!),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF065F46), Color(0xFF047857)],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFF34D399), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF10B981).withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white24,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.system_update_rounded, color: Colors.white, size: 22),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'تحديث جديد متاح لتطبيق المدير (v${_availableUpdate!.version}) 🚀',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    const Text(
+                                      'اضغط هنا لعرض تفاصيل التحديث والتثبيت الفوري',
+                                      style: TextStyle(color: Color(0xFFA7F3D0), fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'تحديث الآن 📥',
+                                  style: TextStyle(
+                                    color: Color(0xFF065F46),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     // بطاقة الإيرادات الرئيسية
                     Container(
                       padding: const EdgeInsets.all(20),
