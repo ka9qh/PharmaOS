@@ -1,7 +1,7 @@
 // شاشة نقطة البيع (POS) المتقدمة - PharmaOS
 // تدعم: قراءة الباركود، البحث اليدوي مع اختيار وحدات البيع (باكت/شريط/حبة)،
 // الدفع النقدي، الدفع عبر المحافظ الإلكترونية، الدفع الآجل مع إضافة العميل فورياً،
-// والخصومات، وحساب الباقي، والطباعة الفورية.
+// والخصومات، وحساب الباقي، وجدول البدائل التفاعلي المباشر، والطباعة الفورية.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,8 +17,11 @@ import '../widgets/clinical_interaction_banner.dart';
 import '../widgets/smart_alternatives_dialog.dart';
 import '../../../customers/presentation/providers/customers_provider.dart';
 import '../../../wallets/presentation/providers/wallets_provider.dart';
+import '../../../wallets/domain/entities/wallet_entity.dart';
 import '../../../../core/di/service_locator.dart';
 import '../../../medicines/domain/repositories/medicines_repository.dart';
+import '../../../medicines/domain/entities/medicines_entity.dart';
+import '../../../../core/services/clinical_ai_service.dart';
 import '../../../ai/presentation/screens/ai_chat_screen.dart';
 import '../../../medicines/presentation/screens/wanted_medicines_screen.dart';
 import '../../../../core/widgets/floating_ai_assistant.dart';
@@ -45,11 +48,17 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   String? _discountError;
   int? _selectedWalletId;
 
+  int _selectedCartIndex = 0;
+  List<MedicineEntity> _currentAlternatives = [];
+  bool _loadingAlternatives = false;
+  int? _lastLoadedMedicineId;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(posNotifierProvider.notifier).refreshStats();
+      _loadAlternativesForSelectedMedicine();
     });
   }
 
@@ -60,6 +69,87 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     _discountController.dispose();
     _amountReceivedController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAlternativesForSelectedMedicine() async {
+    final state = ref.read(posNotifierProvider);
+    if (state.items.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _currentAlternatives = [];
+          _loadingAlternatives = false;
+          _lastLoadedMedicineId = null;
+        });
+      }
+      return;
+    }
+
+    if (_selectedCartIndex >= state.items.length) {
+      _selectedCartIndex = state.items.length - 1;
+    }
+    if (_selectedCartIndex < 0) {
+      _selectedCartIndex = 0;
+    }
+
+    final selectedItem = state.items[_selectedCartIndex];
+    if (_lastLoadedMedicineId == selectedItem.medicineId && _currentAlternatives.isNotEmpty) {
+      return;
+    }
+
+    setState(() => _loadingAlternatives = true);
+
+    try {
+      final medicine = state.medicineEntities[selectedItem.medicineId] ??
+          await sl<MedicinesRepository>().getById(selectedItem.medicineId);
+
+      if (medicine != null && mounted) {
+        final alts = await ClinicalAiService.findSmartAlternatives(medicine);
+        if (mounted) {
+          setState(() {
+            _currentAlternatives = alts;
+            _lastLoadedMedicineId = medicine.id;
+            _loadingAlternatives = false;
+          });
+        }
+      } else if (mounted) {
+        setState(() {
+          _currentAlternatives = [];
+          _loadingAlternatives = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _currentAlternatives = [];
+          _loadingAlternatives = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _swapMedicineWithAlternative(CartItem targetItem, MedicineEntity newMedicine) async {
+    ref.read(posNotifierProvider.notifier).replaceMedicineInCart(targetItem, newMedicine);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.swap_horiz, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'تم استبدال "${targetItem.medicineName}" بـ "${newMedicine.nameAr}" فورياً بنجاح 🔄',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF059669),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    _lastLoadedMedicineId = null;
+    await _loadAlternativesForSelectedMedicine();
   }
 
   Future<void> _submitBarcode(String value) async {
@@ -84,6 +174,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           initialMedicine: boundMedicine,
           onAdd: (med, qty, unitName, multiplier, unitPrice) {
             ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
+            _lastLoadedMedicineId = null;
+            _loadAlternativesForSelectedMedicine();
             _barcodeFocusNode.requestFocus();
           },
         );
@@ -101,6 +193,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         initialMedicine: medicine,
         onAdd: (med, qty, unitName, multiplier, unitPrice) {
           ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
+          _lastLoadedMedicineId = null;
+          _loadAlternativesForSelectedMedicine();
           _barcodeFocusNode.requestFocus();
         },
       );
@@ -240,7 +334,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     separatorBuilder: (_, __) => const Divider(),
                     itemBuilder: (context, index) {
                       final sale = suspendedSales[index];
-                      // Format the date nicely
                       final dt = DateTime.parse(sale['createdAt']).toLocal();
                       final timeStr = '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
                       return ListTile(
@@ -256,6 +349,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                               onPressed: () async {
                                 Navigator.pop(ctx);
                                 await ref.read(posNotifierProvider.notifier).loadSuspendedSale(sale);
+                                _lastLoadedMedicineId = null;
+                                _loadAlternativesForSelectedMedicine();
                               },
                             ),
                             IconButton(
@@ -265,7 +360,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                                 await sl<SalesRepository>().deleteSuspendedSale(sale['id']);
                                 if (mounted) {
                                   Navigator.pop(ctx);
-                                  _showSuspendedSalesDialog(); // reload
+                                  _showSuspendedSalesDialog();
                                 }
                               },
                             ),
@@ -281,11 +376,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         ),
       ),
     );
-  }
-
-  String _formatDiscount(double value) {
-    if (value <= 0) return '';
-    return 'خصم: ${value.toStringAsFixed(0)} ر.ي';
   }
 
   void _showUnitChangeDialog(BuildContext context, WidgetRef ref, CartItem item) async {
@@ -323,7 +413,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (medicine.medicineType == 2) ...[
-                  // إبر وحقن: كرتون + باكت + حبة (إبرة)
                   ListTile(
                     leading: const Icon(Icons.archive_outlined, color: Colors.blue),
                     title: Text('كرتون ($qtyPerCarton باكت = ${qtyPerCarton * qtyPerPack} إبرة)'),
@@ -370,7 +459,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     },
                   ),
                 ] else if (medicine.medicineType == 3) ...[
-                  // علب ومعلبات وزجاج ومغذيات: كرتون + علبة
                   ListTile(
                     leading: const Icon(Icons.archive_outlined, color: Colors.blue),
                     title: Text('كرتون ($qtyPerCarton علبة)'),
@@ -402,7 +490,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     },
                   ),
                 ] else if (medicine.medicineType == 4) ...[
-                  // فراشات وشرنجات: كرتون + حبة
                   ListTile(
                     leading: const Icon(Icons.archive_outlined, color: Colors.blue),
                     title: Text('كرتون ($qtyPerCarton حبة)'),
@@ -434,7 +521,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                     },
                   ),
                 ] else ...[
-                  // حبوب وأقراص (1)
                   if (medicine.qtyPerCarton != null && medicine.qtyPerCarton! > 0)
                     ListTile(
                       leading: const Icon(Icons.archive_outlined, color: Colors.blue),
@@ -517,15 +603,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
 
     if (selectedAlt != null && mounted) {
-      ref.read(posNotifierProvider.notifier).removeItem(item.medicineId, item.selectedUnitMultiplier);
-      await showManualAddToCartDialog(
-        context,
-        initialMedicine: selectedAlt,
-        onAdd: (med, qty, unitName, multiplier, unitPrice) {
-          ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
-          _barcodeFocusNode.requestFocus();
-        },
-      );
+      await _swapMedicineWithAlternative(item, selectedAlt);
     }
   }
 
@@ -604,6 +682,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       );
       _discountController.text = '0';
       _amountReceivedController.clear();
+      _lastLoadedMedicineId = null;
+      _loadAlternativesForSelectedMedicine();
       _barcodeFocusNode.requestFocus();
     }
   }
@@ -612,6 +692,22 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(posNotifierProvider);
     final walletsAsync = ref.watch(walletsNotifierProvider);
+
+    // Auto load alternatives if cart changed or items empty
+    if (state.items.isEmpty && _currentAlternatives.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _currentAlternatives = [];
+            _lastLoadedMedicineId = null;
+          });
+        }
+      });
+    } else if (state.items.isNotEmpty && _lastLoadedMedicineId == null && !_loadingAlternatives) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadAlternativesForSelectedMedicine();
+      });
+    }
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -695,12 +791,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 context,
                 onAdd: (medicine, qty, unitName, multiplier, unitPrice) {
                   ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(medicine, qty, unitName, multiplier, unitPrice);
+                  _lastLoadedMedicineId = null;
+                  _loadAlternativesForSelectedMedicine();
                   _barcodeFocusNode.requestFocus();
                 },
               ),
             ),
             const SizedBox(width: 12),
-            // إحصائيات نقطة البيع والدرج المباشرة
             Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -754,453 +851,184 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             const SizedBox(width: 10),
           ],
         ),
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        body: Column(
           children: [
-            // القسم الأيمن: سلة المشتريات ومسح الباركود
-            Expanded(
-              flex: 6,
-              child: Column(
+            // شريط إدخال الباركود والبحث
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
                 children: [
-                  Container(
-                    color: Colors.white,
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _barcodeController,
-                            focusNode: _barcodeFocusNode,
-                            autofocus: true,
-                            decoration: InputDecoration(
-                              prefixIcon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
-                              hintText: 'امسح الباركود أو أدخله يدويًا ثم اضغط Enter...',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                              filled: true,
-                              fillColor: const Color(0xFFF8FAFC),
-                            ),
-                            onSubmitted: _submitBarcode,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          icon: const Icon(Icons.clear_all),
-                          tooltip: 'إفراغ السلة',
-                          onPressed: state.items.isNotEmpty
-                              ? () => ref.read(posNotifierProvider.notifier).clearCart()
-                              : null,
-                        ),
-                      ],
+                  Expanded(
+                    child: TextField(
+                      controller: _barcodeController,
+                      focusNode: _barcodeFocusNode,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
+                        hintText: 'امسح الباركود أو أدخله يدويًا ثم اضغط Enter...',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      onSubmitted: _submitBarcode,
                     ),
                   ),
-                  if (state.errorMessage != null)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.all(12),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red.shade200),
-                      ),
-                      child: Text(
-                        state.errorMessage!,
-                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  if (state.items.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: ClinicalInteractionBanner(
-                        cartMedicines: state.cartMedicines,
-                      ),
-                    ),
-                  Expanded(
-                    child: state.items.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.shopping_cart_outlined, size: 72, color: Colors.grey.shade400),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'السلة فارغة - امسح الباركود أو ابحث عن دواء للبدء',
-                                  style: TextStyle(fontSize: 15, color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          )
-                        : Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
-                              ],
-                            ),
-                            child: Scrollbar(
-                              thumbVisibility: true,
-                              trackVisibility: true,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SizedBox(
-                                  width: 1050,
-                                  child: Column(
-                                    children: [
-                                      _buildCartTableHeader(),
-                                      Expanded(
-                                        child: ListView.builder(
-                                          itemCount: state.items.length,
-                                          itemBuilder: (context, index) {
-                                            final item = state.items[index];
-                                            return CartItemRow(
-                                              item: item,
-                                              index: index,
-                                              onQuantityChanged: (q) => ref
-                                                  .read(posNotifierProvider.notifier)
-                                                  .updateQuantity(item.medicineId, item.selectedUnitMultiplier, q),
-                                              onPriceChanged: (p) => ref
-                                                  .read(posNotifierProvider.notifier)
-                                                  .updateItemPrice(item.medicineId, item.selectedUnitMultiplier, p),
-                                              onBatchChanged: (batchId, expiryDate) => ref
-                                                  .read(posNotifierProvider.notifier)
-                                                  .updateCartItemBatch(item.medicineId, item.selectedUnitMultiplier, batchId, expiryDate),
-                                              onRemove: () => ref
-                                                  .read(posNotifierProvider.notifier)
-                                                  .removeItem(item.medicineId, item.selectedUnitMultiplier),
-                                              onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
-                                              onFindAlternatives: () => _showAlternativesDialog(context, item),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    icon: const Icon(Icons.clear_all),
+                    tooltip: 'إفراغ السلة',
+                    onPressed: state.items.isNotEmpty
+                        ? () {
+                            ref.read(posNotifierProvider.notifier).clearCart();
+                            setState(() {
+                              _currentAlternatives = [];
+                              _lastLoadedMedicineId = null;
+                            });
+                          }
+                        : null,
                   ),
                 ],
               ),
             ),
 
-            // القسم الأيسر: لوحة الحساب وطرق الدفع والإنهاء
-            SizedBox(
-              width: 380,
-              height: double.infinity,
-              child: Container(
+            if (state.errorMessage != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(-2, 0)),
-                  ],
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('ملخص الفاتورة والدفع', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      const Divider(height: 20),
-
-                      // الإجمالي الفرعي
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('الإجمالي الفرعي:', style: TextStyle(fontSize: 14)),
-                          Text(
-                            '${state.subtotal.toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // الخصم
-                      Row(
-                        children: [
-                          const Text('الخصم:', style: TextStyle(fontSize: 14)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _discountController,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: InputDecoration(
-                                errorText: _discountError,
-                                isDense: true,
-                                suffixText: 'ر.ي',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      
-                      if (state.taxEnabled) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('الضريبة المضافة (${state.taxRate}%):', style: const TextStyle(fontSize: 14)),
-                            Text(
-                              '${state.taxAmount.toStringAsFixed(0)} ر.ي',
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blue),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 24),
-                      ],
-
-                      // الإجمالي النهائي
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('المبلغ المطلوب:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          Text(
-                            '${state.total.toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // الربط الطبي (اختياري)
-                      const Text('الربط الطبي (اختياري):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      const SizedBox(height: 8),
-                      
-                      Row(
-                        children: [
-                          // Doctor Picker
-                          Expanded(
-                            child: Consumer(
-                              builder: (context, ref, _) {
-                                final doctors = ref.watch(doctorsProvider).value ?? [];
-                                return InkWell(
-                                  onTap: () async {
-                                    final selected = await showSearchableEntityPicker<DoctorRow>(
-                                      context: context,
-                                      items: doctors,
-                                      title: 'اختر الطبيب',
-                                      searchHint: 'ابحث عن طبيب...',
-                                      itemLabelBuilder: (d) => '${d.name} - ${d.specialty ?? ""}',
-                                      searchFilter: (d, query) => d.name.toLowerCase().contains(query.toLowerCase()),
-                                    );
-                                    if (selected != null) {
-                                      ref.read(posNotifierProvider.notifier).copyWithState(
-                                        selectedDoctorId: selected.id,
-                                        selectedDoctorName: selected.name,
-                                      );
-                                    } else {
-                                      ref.read(posNotifierProvider.notifier).copyWithState(clearMedical: true); // Allow clearing
-                                    }
-                                  },
-                                  child: InputDecorator(
-                                    decoration: const InputDecoration(labelText: 'الطبيب', border: OutlineInputBorder(), isDense: true),
-                                    child: Text(state.selectedDoctorName ?? 'بدون طبيب', overflow: TextOverflow.ellipsis),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          
-                          // Prescription Picker
-                          Expanded(
-                            child: Consumer(
-                              builder: (context, ref, _) {
-                                final prescriptions = ref.watch(prescriptionsProvider).value ?? [];
-                                return InkWell(
-                                  onTap: () async {
-                                    final selected = await showSearchableEntityPicker<PrescriptionRow>(
-                                      context: context,
-                                      items: prescriptions,
-                                      title: 'اختر الوصفة الطبية',
-                                      searchHint: 'ابحث عن وصفة...',
-                                      itemLabelBuilder: (p) => 'وصفة ${p.prescriptionNumber ?? p.id} - ${p.diagnosis ?? ""}',
-                                      searchFilter: (p, query) => (p.prescriptionNumber ?? "").toLowerCase().contains(query.toLowerCase()) || (p.diagnosis ?? "").toLowerCase().contains(query.toLowerCase()),
-                                    );
-                                    if (selected != null) {
-                                      ref.read(posNotifierProvider.notifier).copyWithState(
-                                        selectedPrescriptionId: selected.id,
-                                        selectedPrescriptionNumber: selected.prescriptionNumber,
-                                      );
-                                    }
-                                  },
-                                  child: InputDecorator(
-                                    decoration: const InputDecoration(labelText: 'الوصفة', border: OutlineInputBorder(), isDense: true),
-                                    child: Text(state.selectedPrescriptionNumber != null ? 'وصفة ${state.selectedPrescriptionNumber}' : (state.selectedPrescriptionId != null ? 'وصفة ${state.selectedPrescriptionId}' : 'بدون وصفة'), overflow: TextOverflow.ellipsis),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // اختيار طريقة الدفع
-                      const Text('طريقة الدفع:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          ChoiceChip(
-                            avatar: const Icon(Icons.payments_outlined, size: 16),
-                            label: const Text('نقدي'),
-                            selected: state.paymentMethod == 'نقدي',
-                            onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('نقدي'),
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.account_balance_wallet_outlined, size: 16),
-                            label: const Text('محفظة إلكترونية'),
-                            selected: state.paymentMethod == 'محفظة',
-                            onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('محفظة'),
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.person_outline, size: 16),
-                            label: const Text('آجل (دين على عميل)'),
-                            selected: state.paymentMethod == 'آجل',
-                            onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('آجل'),
-                          ),
-                        ],
-                      ),
-
-                      // خيارات المحفظة الإلكترونية
-                      if (state.paymentMethod == 'محفظة') ...[
-                        const SizedBox(height: 12),
-                        walletsAsync.when(
-                          data: (wallets) {
-                            if (wallets.isEmpty) {
-                              return const Text('لا توجد محافظ معرفة');
-                            }
-                            return DropdownButtonFormField<int>(
-                              decoration: InputDecoration(
-                                labelText: 'اختر المحفظة',
-                                isDense: true,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              value: _selectedWalletId ?? wallets.first.id,
-                              items: wallets
-                                  .map((w) => DropdownMenuItem(value: w.id, child: Text(w.name)))
-                                  .toList(),
-                              onChanged: (val) {
-                                setState(() => _selectedWalletId = val);
-                              },
-                            );
-                          },
-                          loading: () => const LinearProgressIndicator(),
-                          error: (_, __) => const Text('تعذر تحميل المحافظ'),
-                        ),
-                      ],
-
-                      // خيارات البيع الآجل والعميل
-                      if (state.isCreditSale) ...[
-                        const SizedBox(height: 12),
-                        Consumer(
-                          builder: (context, ref, _) {
-                            final customers = ref.watch(customersNotifierProvider).items;
-                            return Row(
-                              children: [
-                                Expanded(
-                                  child: customers.isEmpty
-                                      ? const Text('لا يوجد عملاء مضافين بعد')
-                                      : DropdownButtonFormField<int>(
-                                          value: state.selectedCustomerId,
-                                          hint: const Text('اختر العميل المدين'),
-                                          decoration: InputDecoration(
-                                            labelText: 'العميل المدين',
-                                            isDense: true,
-                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                          ),
-                                          items: customers
-                                              .map((c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
-                                              .toList(),
-                                          onChanged: (value) {
-                                            if (value == null) return;
-                                            final name = customers.firstWhere((c) => c.id == value).name;
-                                            ref.read(posNotifierProvider.notifier).setCustomer(value, name);
-                                          },
-                                        ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton.filledTonal(
-                                  icon: const Icon(Icons.person_add),
-                                  tooltip: 'إضافة عميل جديد',
-                                  onPressed: _showAddNewCustomerDialog,
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-
-                      // إدخال المبلغ المستلم وحساب الباقي (للنقدي)
-                      if (!state.isCreditSale) ...[
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _amountReceivedController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                            labelText: 'المبلغ المستلم من العميل',
-                            isDense: true,
-                            suffixText: 'ر.ي',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onChanged: (value) => ref
-                              .read(posNotifierProvider.notifier)
-                              .setAmountReceived(double.tryParse(value) ?? 0),
-                        ),
-                        if (_amountReceivedController.text.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('الباقي للعميل:', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Text(
-                                state.changeOwed >= 0
-                                    ? '${state.changeOwed.toStringAsFixed(0)} ر.ي'
-                                    : 'المبلغ ناقص (${(-state.changeOwed).toStringAsFixed(0)})',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: state.changeOwed >= 0 ? Colors.green : Colors.red,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-
-                      const SizedBox(height: 24),
-
-                      // زر إتمام البيع
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: FilledButton.icon(
-                          icon: state.isProcessing
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Icon(Icons.check_circle_outline),
-                          label: const Text('إتمام عملية البيع وحفظ الفاتورة', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: state.isProcessing ? null : _checkout,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: Text(
+                  state.errorMessage!,
+                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
                 ),
               ),
+
+            if (state.items.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                child: ClinicalInteractionBanner(
+                  cartMedicines: state.cartMedicines,
+                ),
+              ),
+
+            // منطقة الجداول الواسعة (جدول السلة + جدول البدائل التفاعلي المباشر)
+            Expanded(
+              child: state.items.isEmpty
+                  ? _buildEmptyCartState()
+                  : Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Column(
+                        children: [
+                          // جدول سلة المبيعات الحالية (Upper Table)
+                          Expanded(
+                            flex: 5,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  _buildCartTableHeader(),
+                                  Expanded(
+                                    child: Scrollbar(
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: SizedBox(
+                                          width: 1100,
+                                          child: ListView.builder(
+                                            itemCount: state.items.length,
+                                            itemBuilder: (context, index) {
+                                              final item = state.items[index];
+                                              return CartItemRow(
+                                                item: item,
+                                                index: index,
+                                                isSelected: index == _selectedCartIndex,
+                                                onSelect: () {
+                                                  setState(() {
+                                                    _selectedCartIndex = index;
+                                                    _lastLoadedMedicineId = null;
+                                                  });
+                                                  _loadAlternativesForSelectedMedicine();
+                                                },
+                                                onQuantityChanged: (q) => ref
+                                                    .read(posNotifierProvider.notifier)
+                                                    .updateQuantity(item.medicineId, item.selectedUnitMultiplier, q),
+                                                onPriceChanged: (p) => ref
+                                                    .read(posNotifierProvider.notifier)
+                                                    .updateItemPrice(item.medicineId, item.selectedUnitMultiplier, p),
+                                                onBatchChanged: (batchId, expiryDate) => ref
+                                                    .read(posNotifierProvider.notifier)
+                                                    .updateCartItemBatch(item.medicineId, item.selectedUnitMultiplier, batchId, expiryDate),
+                                                onRemove: () {
+                                                  ref
+                                                      .read(posNotifierProvider.notifier)
+                                                      .removeItem(item.medicineId, item.selectedUnitMultiplier);
+                                                  _lastLoadedMedicineId = null;
+                                                  _loadAlternativesForSelectedMedicine();
+                                                },
+                                                onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
+                                                onFindAlternatives: () => _showAlternativesDialog(context, item),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // جدول بدائل الدواء المحدد المباشر (Lower Alternatives Table)
+                          Expanded(
+                            flex: 4,
+                            child: _buildAlternativesTableSection(state),
+                          ),
+                        ],
+                      ),
+                    ),
             ),
+
+            // الشريط السفلي العريض لملخص الفاتورة وإتمام البيع
+            _buildBottomInvoiceSummaryBar(context, state, walletsAsync),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyCartState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.shopping_cart_outlined, size: 72, color: Colors.grey.shade400),
+          const SizedBox(height: 12),
+          const Text(
+            'السلة فارغة - امسح الباركود أو ابحث عن دواء للبدء',
+            style: TextStyle(fontSize: 15, color: Colors.grey),
+          ),
+        ],
       ),
     );
   }
@@ -1209,20 +1037,657 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
       child: const Row(
         children: [
-          SizedBox(width: 40, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          SizedBox(width: 250, child: Text('اسم الدواء', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          SizedBox(width: 100, child: Text('الوحدة', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          SizedBox(width: 120, child: Text('السعر', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          SizedBox(width: 130, child: Text('الكمية', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          SizedBox(width: 130, child: Text('الانتهاء', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          SizedBox(width: 120, child: Text('الإجمالي', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-          Expanded(child: Text('الإجراءات', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+          SizedBox(width: 40, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          SizedBox(width: 250, child: Text('اسم الدواء والتركيب', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          SizedBox(width: 100, child: Text('الوحدة', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          SizedBox(width: 150, child: Text('سعر الوحدة ✏️', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          SizedBox(width: 150, child: Text('الكمية (+/-)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          SizedBox(width: 130, child: Text('الانتهاء / الدفعة 📅', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          SizedBox(width: 120, child: Text('الإجمالي', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          Expanded(child: Text('الإجراءات والبدائل', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAlternativesTableSection(PosCartState state) {
+    if (state.items.isEmpty) return const SizedBox.shrink();
+
+    final selectedIndex = _selectedCartIndex.clamp(0, state.items.length - 1);
+    final selectedItem = state.items[selectedIndex];
+    final selectedMedEntity = state.medicineEntities[selectedItem.medicineId];
+    final targetUnitPrice = selectedItem.unitPrice;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.35), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // شريط عنوان البدائل
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.swap_horizontal_circle_outlined, color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontFamily: 'Segoe UI'),
+                      children: [
+                        const TextSpan(text: 'بدائل الدواء المحدد في السلة: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(
+                          text: selectedItem.medicineName,
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                        ),
+                        if (selectedMedEntity?.nameScientific != null && selectedMedEntity!.nameScientific!.isNotEmpty) ...[
+                          const TextSpan(text: '  (المادة الفعالة: '),
+                          TextSpan(
+                            text: selectedMedEntity.nameScientific!,
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2563EB)),
+                          ),
+                          const TextSpan(text: ')'),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _currentAlternatives.isNotEmpty ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _currentAlternatives.isNotEmpty ? const Color(0xFF6EE7B7) : const Color(0xFFCBD5E1),
+                    ),
+                  ),
+                  child: Text(
+                    '${_currentAlternatives.length} بدائل متوفرة',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _currentAlternatives.isNotEmpty ? const Color(0xFF059669) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF059669)),
+                  tooltip: 'إعادة البحث عن البدائل',
+                  onPressed: () {
+                    _lastLoadedMedicineId = null;
+                    _loadAlternativesForSelectedMedicine();
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          // عناوين أعمدة جدول البدائل
+          Container(
+            color: const Color(0xFF334155),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            child: const Row(
+              children: [
+                SizedBox(width: 40, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                SizedBox(width: 240, child: Text('اسم الدواء البديل', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                SizedBox(width: 220, child: Text('المادة الفعالة / التركيب', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                SizedBox(width: 140, child: Text('الشركة المصنعة / التصنيف', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                SizedBox(width: 110, child: Text('الحالة والمخزون', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                SizedBox(width: 110, child: Text('سعر الوحدة', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                SizedBox(width: 120, child: Text('فرق السعر', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+                Expanded(child: Text('إجراء الاستبدال الفوري', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+              ],
+            ),
+          ),
+
+          // صفوف البدائل
+          Expanded(
+            child: _loadingAlternatives
+                ? const Center(child: CircularProgressIndicator())
+                : _currentAlternatives.isEmpty
+                    ? Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_off_rounded, size: 24, color: Colors.grey.shade400),
+                            const SizedBox(width: 8),
+                            Text(
+                              'لا توجد بدائل تجارية مسجلة بنفس المادة الفعالة للدواء (${selectedItem.medicineName})',
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Scrollbar(
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: 1180,
+                            child: ListView.builder(
+                              itemCount: _currentAlternatives.length,
+                              itemBuilder: (context, altIndex) {
+                                final alt = _currentAlternatives[altIndex];
+                                final isEven = altIndex % 2 == 0;
+                                final altPrice = alt.sellingPrice;
+                                final priceDiff = altPrice - targetUnitPrice;
+                                final isAvailable = alt.isActive;
+
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: isEven ? Colors.white : const Color(0xFFF8FAFC),
+                                    border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 40,
+                                        child: Text('${altIndex + 1}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 12)),
+                                      ),
+                                      SizedBox(
+                                        width: 240,
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              alt.nameAr,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (alt.nameEn != null && alt.nameEn!.isNotEmpty)
+                                              Text(
+                                                alt.nameEn!,
+                                                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 220,
+                                        child: Text(
+                                          alt.nameScientific ?? 'غير محدد',
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.w500),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 140,
+                                        child: Text(
+                                          alt.companyName ?? alt.categoryName ?? '—',
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 110,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: isAvailable ? Colors.green.shade50 : Colors.red.shade50,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                              color: isAvailable ? Colors.green.shade200 : Colors.red.shade200,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            isAvailable ? 'متوفر' : 'غير متوفر',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: isAvailable ? Colors.green.shade800 : Colors.red.shade800,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 110,
+                                        child: Text(
+                                          '${altPrice.toStringAsFixed(0)} ر.ي',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                          priceDiff == 0
+                                              ? 'مطابق بالسعر'
+                                              : (priceDiff > 0
+                                                  ? '+${priceDiff.toStringAsFixed(0)} ر.ي (أغلى)'
+                                                  : '${priceDiff.toStringAsFixed(0)} ر.ي (أرخص)'),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: priceDiff == 0
+                                                ? Colors.blueGrey
+                                                : (priceDiff > 0 ? Colors.orange.shade800 : Colors.green.shade800),
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Align(
+                                          alignment: Alignment.center,
+                                          child: FilledButton.icon(
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: const Color(0xFF10B981),
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            ),
+                                            icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                                            label: const Text('استبدال فوري 🔄', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                            onPressed: () => _swapMedicineWithAlternative(selectedItem, alt),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomInvoiceSummaryBar(BuildContext context, PosCartState state, AsyncValue<List<WalletEntity>> walletsAsync) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: const Border(top: BorderSide(color: Color(0xFFCBD5E1), width: 1.5)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, -3)),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // القسم 1: الربط الطبي (Doctor / Prescription)
+            SizedBox(
+              width: 220,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.medical_services_outlined, size: 14, color: Color(0xFF64748B)),
+                      SizedBox(width: 4),
+                      Text('الربط الطبي (اختياري):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569))),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final doctors = ref.watch(doctorsProvider).value ?? [];
+                      return InkWell(
+                        onTap: () async {
+                          final selected = await showSearchableEntityPicker<DoctorRow>(
+                            context: context,
+                            items: doctors,
+                            title: 'اختر الطبيب',
+                            searchHint: 'ابحث عن طبيب...',
+                            itemLabelBuilder: (d) => '${d.name} - ${d.specialty ?? ""}',
+                            searchFilter: (d, query) => d.name.toLowerCase().contains(query.toLowerCase()),
+                          );
+                          if (selected != null) {
+                            ref.read(posNotifierProvider.notifier).copyWithState(
+                              selectedDoctorId: selected.id,
+                              selectedDoctorName: selected.name,
+                            );
+                          } else {
+                            ref.read(posNotifierProvider.notifier).copyWithState(clearMedical: true);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person, size: 14, color: Colors.teal),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  state.selectedDoctorName ?? 'بدون طبيب',
+                                  style: const TextStyle(fontSize: 11),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final prescriptions = ref.watch(prescriptionsProvider).value ?? [];
+                      return InkWell(
+                        onTap: () async {
+                          final selected = await showSearchableEntityPicker<PrescriptionRow>(
+                            context: context,
+                            items: prescriptions,
+                            title: 'اختر الوصفة الطبية',
+                            searchHint: 'ابحث عن وصفة...',
+                            itemLabelBuilder: (p) => 'وصفة ${p.prescriptionNumber ?? p.id} - ${p.diagnosis ?? ""}',
+                            searchFilter: (p, query) =>
+                                (p.prescriptionNumber ?? "").toLowerCase().contains(query.toLowerCase()) ||
+                                (p.diagnosis ?? "").toLowerCase().contains(query.toLowerCase()),
+                          );
+                          if (selected != null) {
+                            ref.read(posNotifierProvider.notifier).copyWithState(
+                              selectedPrescriptionId: selected.id,
+                              selectedPrescriptionNumber: selected.prescriptionNumber,
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.receipt_long, size: 14, color: Colors.blue),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  state.selectedPrescriptionNumber != null
+                                      ? 'وصفة ${state.selectedPrescriptionNumber}'
+                                      : (state.selectedPrescriptionId != null ? 'وصفة ${state.selectedPrescriptionId}' : 'بدون وصفة'),
+                                  style: const TextStyle(fontSize: 11),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            const VerticalDivider(width: 24, thickness: 1, color: Color(0xFFE2E8F0)),
+
+            // القسم 2: طريقة الدفع والتفاصيل
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      const Text('طريقة الدفع: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569))),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.payments_outlined, size: 14),
+                        label: const Text('نقدي', style: TextStyle(fontSize: 11)),
+                        selected: state.paymentMethod == 'نقدي',
+                        onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('نقدي'),
+                      ),
+                      const SizedBox(width: 4),
+                      ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.account_balance_wallet_outlined, size: 14),
+                        label: const Text('محفظة', style: TextStyle(fontSize: 11)),
+                        selected: state.paymentMethod == 'محفظة',
+                        onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('محفظة'),
+                      ),
+                      const SizedBox(width: 4),
+                      ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.person_outline, size: 14),
+                        label: const Text('آجل', style: TextStyle(fontSize: 11)),
+                        selected: state.paymentMethod == 'آجل',
+                        onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('آجل'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  if (state.paymentMethod == 'محفظة')
+                    walletsAsync.when(
+                      data: (wallets) => SizedBox(
+                        height: 36,
+                        child: DropdownButtonFormField<int>(
+                          decoration: InputDecoration(
+                            labelText: 'اختر المحفظة',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          value: _selectedWalletId ?? (wallets.isNotEmpty ? wallets.first.id : null),
+                          items: wallets.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name, style: const TextStyle(fontSize: 12)))).toList(),
+                          onChanged: (val) => setState(() => _selectedWalletId = val),
+                        ),
+                      ),
+                      loading: () => const LinearProgressIndicator(),
+                      error: (_, __) => const Text('تعذر تحميل المحافظ', style: TextStyle(fontSize: 11, color: Colors.red)),
+                    )
+                  else if (state.isCreditSale)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final customers = ref.watch(customersNotifierProvider).items;
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 36,
+                                child: DropdownButtonFormField<int>(
+                                  value: state.selectedCustomerId,
+                                  hint: const Text('اختر العميل المدين', style: TextStyle(fontSize: 11)),
+                                  decoration: InputDecoration(
+                                    labelText: 'العميل المدين',
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                  ),
+                                  items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name, style: const TextStyle(fontSize: 12)))).toList(),
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    final name = customers.firstWhere((c) => c.id == value).name;
+                                    ref.read(posNotifierProvider.notifier).setCustomer(value, name);
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.person_add, size: 20, color: Colors.blue),
+                              tooltip: 'إضافة عميل جديد',
+                              onPressed: _showAddNewCustomerDialog,
+                            ),
+                          ],
+                        );
+                      },
+                    )
+                  else
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 140,
+                          height: 36,
+                          child: TextField(
+                            controller: _amountReceivedController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: const TextStyle(fontSize: 12),
+                            decoration: InputDecoration(
+                              labelText: 'المستلم من العميل',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              suffixText: 'ر.ي',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            onChanged: (value) => ref
+                                .read(posNotifierProvider.notifier)
+                                .setAmountReceived(double.tryParse(value) ?? 0),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (_amountReceivedController.text.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: state.changeOwed >= 0 ? Colors.green.shade50 : Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: state.changeOwed >= 0 ? Colors.green.shade200 : Colors.red.shade200),
+                            ),
+                            child: Text(
+                              state.changeOwed >= 0
+                                  ? 'الباقي: ${state.changeOwed.toStringAsFixed(0)} ر.ي'
+                                  : 'ناقص: ${(-state.changeOwed).toStringAsFixed(0)} ر.ي',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: state.changeOwed >= 0 ? Colors.green.shade800 : Colors.red.shade800,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+
+            const VerticalDivider(width: 24, thickness: 1, color: Color(0xFFE2E8F0)),
+
+            // القسم 3: الإجمالي والخصم والضريبة
+            Expanded(
+              flex: 4,
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          const Text('الإجمالي الفرعي: ', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                          Text(
+                            '${state.subtotal.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Text('الخصم: ', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                          SizedBox(
+                            width: 80,
+                            height: 30,
+                            child: TextField(
+                              controller: _discountController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                              decoration: InputDecoration(
+                                errorText: _discountError,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                suffixText: 'ر.ي',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF86EFAC)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('المبلغ المطلوب للبيع:', style: TextStyle(fontSize: 11, color: Color(0xFF166534), fontWeight: FontWeight.w600)),
+                          Text(
+                            '${state.total.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Color(0xFF15803D)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const VerticalDivider(width: 24, thickness: 1, color: Color(0xFFE2E8F0)),
+
+            // القسم 4: زر الحفظ والإتمام
+            SizedBox(
+              width: 200,
+              child: FilledButton.icon(
+                icon: state.isProcessing
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.check_circle_outline, size: 20),
+                label: const Text(
+                  'إتمام عملية البيع\nوحفظ الفاتورة',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, height: 1.2),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                onPressed: state.isProcessing ? null : _checkout,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

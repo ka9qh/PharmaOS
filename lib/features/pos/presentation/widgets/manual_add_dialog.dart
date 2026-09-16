@@ -11,6 +11,26 @@ import '../../../inventory/domain/repositories/inventory_repository.dart';
 import '../../../../core/services/medicine_clinical_helper.dart';
 import '../../../medicines/presentation/widgets/medicine_clinical_details_dialog.dart';
 
+class _UnitOption {
+  final String name;
+  final String label;
+  final IconData icon;
+  final double unitPrice;
+  final int multiplier;
+  int quantity;
+
+  _UnitOption({
+    required this.name,
+    required this.label,
+    required this.icon,
+    required this.unitPrice,
+    required this.multiplier,
+    this.quantity = 0,
+  });
+
+  double get subtotal => unitPrice * quantity;
+}
+
 Future<void> showManualAddToCartDialog(
   BuildContext context, {
   MedicineEntity? initialMedicine,
@@ -21,19 +41,14 @@ Future<void> showManualAddToCartDialog(
   List<MedicineEntity> inStockAlternatives = [];
   MedicineEntity? selected = initialMedicine;
   
-  String selectedUnit = 'باكت';
-  int unitMultiplier = 1;
-  double unitPrice = 0.0;
-  int quantity = 1;
-
-  final qtyController = TextEditingController(text: '1');
+  final List<_UnitOption> unitOptions = [];
   bool isSearching = false;
   bool isAiSearching = false;
   String? aiResponseText;
   Timer? _debounceTimer;
 
-  void calculateUnitDetails(MedicineEntity med, String unitType) {
-    selectedUnit = unitType;
+  void buildUnitOptions(MedicineEntity med) {
+    unitOptions.clear();
     final qtyPerCarton = (med.qtyPerCarton != null && med.qtyPerCarton! > 0) ? med.qtyPerCarton! : 1;
     final qtyPerPack = (med.qtyPerPack != null && med.qtyPerPack! > 0) ? med.qtyPerPack! : 1;
     final qtyPerStrip = (med.qtyPerStrip != null && med.qtyPerStrip! > 0) ? med.qtyPerStrip! : 1;
@@ -56,31 +71,97 @@ Future<void> showManualAddToCartDialog(
             ? pillPrice * qtyPerCarton 
             : (med.medicineType == 2 ? packPrice * qtyPerCarton : packPrice * qtyPerCarton));
 
-    if (unitType == 'كرتون') {
-      if (med.medicineType == 3 || med.medicineType == 4) {
-        unitMultiplier = qtyPerCarton;
-      } else if (med.medicineType == 2) {
-        unitMultiplier = qtyPerCarton * qtyPerPack;
-      } else {
-        unitMultiplier = qtyPerCarton * qtyPerPack * qtyPerStrip;
+    if (med.medicineType == 3) {
+      // شراب وعصير وقطرات
+      unitOptions.add(_UnitOption(
+        name: 'علبة',
+        label: 'علبة كاملة',
+        icon: Icons.water_drop_outlined,
+        unitPrice: pillPrice,
+        multiplier: 1,
+        quantity: 1,
+      ));
+      if (med.qtyPerCarton != null && med.qtyPerCarton! > 1) {
+        unitOptions.add(_UnitOption(
+          name: 'كرتون',
+          label: 'كرتون (${med.qtyPerCarton} علبة)',
+          icon: Icons.archive_outlined,
+          unitPrice: cartonPrice,
+          multiplier: qtyPerCarton,
+          quantity: 0,
+        ));
       }
-      unitPrice = cartonPrice;
-    } else if (unitType == 'باكت') {
-      unitMultiplier = (med.medicineType == 2) ? qtyPerPack : (qtyPerPack * qtyPerStrip);
-      unitPrice = packPrice;
-    } else if (unitType == 'شريط') {
-      unitMultiplier = qtyPerStrip;
-      unitPrice = stripPrice;
+    } else if (med.medicineType == 2) {
+      // حقن وإبر
+      unitOptions.add(_UnitOption(
+        name: 'باكت',
+        label: 'باكت كامل (${qtyPerPack} إبرة)',
+        icon: Icons.inventory_2_outlined,
+        unitPrice: packPrice,
+        multiplier: qtyPerPack,
+        quantity: 1,
+      ));
+      unitOptions.add(_UnitOption(
+        name: 'حبة',
+        label: 'حبة (إبرة مفردة)',
+        icon: Icons.colorize_outlined,
+        unitPrice: pillPrice,
+        multiplier: 1,
+        quantity: 0,
+      ));
+      if (med.qtyPerCarton != null && med.qtyPerCarton! > 1) {
+        unitOptions.add(_UnitOption(
+          name: 'كرتون',
+          label: 'كرتون (${qtyPerCarton} باكت)',
+          icon: Icons.archive_outlined,
+          unitPrice: cartonPrice,
+          multiplier: qtyPerCarton * qtyPerPack,
+          quantity: 0,
+        ));
+      }
     } else {
-      // علبة أو إبرة أو حبة
-      unitMultiplier = 1;
-      unitPrice = pillPrice;
+      // حبوب وأقراص ومستحضرات
+      unitOptions.add(_UnitOption(
+        name: 'باكت',
+        label: 'باكت كامل',
+        icon: Icons.inventory_2_outlined,
+        unitPrice: packPrice,
+        multiplier: qtyPerPack * qtyPerStrip,
+        quantity: 1,
+      ));
+      if (med.medicineType == 1 || qtyPerPack > 1) {
+        unitOptions.add(_UnitOption(
+          name: 'شريط',
+          label: 'شريط مفرد (${qtyPerStrip} حبة)',
+          icon: Icons.view_headline,
+          unitPrice: stripPrice,
+          multiplier: qtyPerStrip,
+          quantity: 0,
+        ));
+      }
+      unitOptions.add(_UnitOption(
+        name: 'حبة',
+        label: 'حبة مفردة',
+        icon: Icons.circle_outlined,
+        unitPrice: pillPrice,
+        multiplier: 1,
+        quantity: 0,
+      ));
+      if (med.qtyPerCarton != null && med.qtyPerCarton! > 1) {
+        unitOptions.add(_UnitOption(
+          name: 'كرتون',
+          label: 'كرتون (${qtyPerCarton} باكت)',
+          icon: Icons.archive_outlined,
+          unitPrice: cartonPrice,
+          multiplier: qtyPerCarton * qtyPerPack * qtyPerStrip,
+          quantity: 0,
+        ));
+      }
     }
   }
 
   if (initialMedicine != null) {
-    final defUnit = initialMedicine.medicineType == 3 ? 'علبة' : (initialMedicine.medicineType == 4 ? 'حبة' : 'باكت');
-    calculateUnitDetails(initialMedicine, defUnit);
+    buildUnitOptions(initialMedicine);
   }
 
   if (!context.mounted) return;
@@ -210,7 +291,7 @@ Future<void> showManualAddToCartDialog(
                                   onPressed: () {
                                     setState(() {
                                       selected = alt;
-                                      calculateUnitDetails(alt, 'باكت');
+                                      buildUnitOptions(alt);
                                       results = [];
                                       inStockAlternatives = [];
                                     });
@@ -255,7 +336,7 @@ Future<void> showManualAddToCartDialog(
                               onTap: () {
                                 setState(() {
                                   selected = med;
-                                  calculateUnitDetails(med, 'باكت');
+                                  buildUnitOptions(med);
                                   results = [];
                                   inStockAlternatives = [];
                                 });
@@ -501,160 +582,169 @@ Future<void> showManualAddToCartDialog(
 
                     const SizedBox(height: 16),
 
-                    // اختيار وحدة البيع
-                    const Text('اختر وحدة البيع المطلوبة:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        if (selected!.medicineType == 2) ...[
-                          // إبر وحقن: كرتون + باكت + حبة (إبرة)
-                          ChoiceChip(
-                            avatar: const Icon(Icons.archive_outlined, size: 16),
-                            label: const Text('كرتون'),
-                            selected: selectedUnit == 'كرتون',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'كرتون')),
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.inventory_2_outlined, size: 16),
-                            label: const Text('باكت كامل'),
-                            selected: selectedUnit == 'باكت',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'باكت')),
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.colorize_outlined, size: 16),
-                            label: const Text('حبة (إبرة)'),
-                            selected: selectedUnit == 'حبة' || selectedUnit == 'إبرة',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'حبة')),
-                          ),
-                        ] else if (selected!.medicineType == 3) ...[
-                          // علب ومعلبات وزجاج ومغذيات: كرتون + علبة
-                          ChoiceChip(
-                            avatar: const Icon(Icons.archive_outlined, size: 16),
-                            label: const Text('كرتون'),
-                            selected: selectedUnit == 'كرتون',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'كرتون')),
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.water_drop_outlined, size: 16),
-                            label: const Text('علبة'),
-                            selected: selectedUnit == 'علبة' || selectedUnit == 'حبة',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'علبة')),
-                          ),
-                        ] else if (selected!.medicineType == 4) ...[
-                          // فراشات وشرنجات: كرتون + حبة
-                          ChoiceChip(
-                            avatar: const Icon(Icons.archive_outlined, size: 16),
-                            label: const Text('كرتون'),
-                            selected: selectedUnit == 'كرتون',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'كرتون')),
-                          ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.medical_services_outlined, size: 16),
-                            label: const Text('حبة'),
-                            selected: selectedUnit == 'حبة',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'حبة')),
-                          ),
-                        ] else ...[
-                          // حبوب وأقراص (1)
-                          if (selected!.qtyPerCarton != null && selected!.qtyPerCarton! > 0)
-                            ChoiceChip(
-                              avatar: const Icon(Icons.archive_outlined, size: 16),
-                              label: const Text('كرتون'),
-                              selected: selectedUnit == 'كرتون',
-                              onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'كرتون')),
-                            ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.inventory_2_outlined, size: 16),
-                            label: const Text('باكت كامل'),
-                            selected: selectedUnit == 'باكت',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'باكت')),
-                          ),
-                          if (selected!.medicineType == 1 || (selected!.qtyPerPack != null && selected!.qtyPerPack! > 1))
-                            ChoiceChip(
-                              avatar: const Icon(Icons.view_headline, size: 16),
-                              label: const Text('شريط'),
-                              selected: selectedUnit == 'شريط',
-                              onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'شريط')),
-                            ),
-                          ChoiceChip(
-                            avatar: const Icon(Icons.circle_outlined, size: 16),
-                            label: const Text('حبة'),
-                            selected: selectedUnit == 'حبة',
-                            onSelected: (_) => setState(() => calculateUnitDetails(selected!, 'حبة')),
-                          ),
-                        ],
-                      ],
-                    ),
-
                     const SizedBox(height: 16),
 
-                    // إدخال الكمية
-                    Row(
+                    // اختيار وحدات البيع والكميات المتزامنة
+                    const Row(
                       children: [
-                        const Text('الكمية المطلوبة:', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle, color: Colors.redAccent),
-                          onPressed: () {
-                            if (quantity > 1) {
-                              setState(() {
-                                quantity--;
-                                qtyController.text = quantity.toString();
-                              });
-                            }
-                          },
-                        ),
-                        SizedBox(
-                          width: 60,
-                          child: TextField(
-                            controller: qtyController,
-                            textAlign: TextAlign.center,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-                            onChanged: (val) {
-                              final q = int.tryParse(val) ?? 1;
-                              setState(() => quantity = q > 0 ? q : 1);
-                            },
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle, color: Colors.green),
-                          onPressed: () {
-                            setState(() {
-                              quantity++;
-                              qtyController.text = quantity.toString();
-                            });
-                          },
-                        ),
+                        Icon(Icons.layers_rounded, color: Colors.blue, size: 20),
+                        SizedBox(width: 8),
+                        Text('تحديد الكمية المطلوبة لكل وحدة بيع:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       ],
                     ),
+                    const SizedBox(height: 10),
 
-                    const SizedBox(height: 16),
+                    // قائمة بطاقات الوحدات (باكت، شريط، حبة، كرتون)
+                    ...unitOptions.map((unitOpt) {
+                      final hasQty = unitOpt.quantity > 0;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: hasQty ? Colors.blue.shade50.withOpacity(0.6) : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: hasQty ? Colors.blue.shade400 : Colors.grey.shade300,
+                            width: hasQty ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: hasQty ? Colors.blue.shade100 : Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(unitOpt.icon, color: hasQty ? Colors.blue.shade800 : Colors.grey.shade700, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    unitOpt.label,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: hasQty ? Colors.blue.shade900 : Colors.black87,
+                                    ),
+                                  ),
+                                  Text(
+                                    'سعر المفرد: ${unitOpt.unitPrice.toStringAsFixed(0)} ر.ي',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // أزرار زيادة ونقصان الكمية
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
+                                  onPressed: unitOpt.quantity > 0
+                                      ? () {
+                                          setState(() {
+                                            unitOpt.quantity--;
+                                          });
+                                        }
+                                      : null,
+                                ),
+                                Container(
+                                  width: 45,
+                                  height: 34,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: Text(
+                                    '${unitOpt.quantity}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, color: Colors.green, size: 22),
+                                  onPressed: () {
+                                    setState(() {
+                                      unitOpt.quantity++;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
+                            // مبلغ الوحدة
+                            SizedBox(
+                              width: 85,
+                              child: Text(
+                                '${unitOpt.subtotal.toStringAsFixed(0)} ر.ي',
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: hasQty ? Colors.green.shade800 : Colors.grey.shade500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
 
-                    // ملخص السعر والإجمالي
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('سعر الوحدة ($selectedUnit): ${unitPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(fontSize: 12)),
-                              Text('الكمية: $quantity $selectedUnit', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 12),
+
+                    // ملخص المبالغ والإجمالي الكلي
+                    Builder(
+                      builder: (context) {
+                        final selectedUnits = unitOptions.where((u) => u.quantity > 0).toList();
+                        final totalAmount = selectedUnits.fold<double>(0.0, (sum, u) => sum + u.subtotal);
+
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue.shade200),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3)),
                             ],
                           ),
-                          Text(
-                            'الإجمالي: ${(unitPrice * quantity).toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('تفاصيل وإجمالي الوحدات المحددة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                              const SizedBox(height: 6),
+                              if (selectedUnits.isEmpty)
+                                const Text('يرجى تحديد كمية 1 على الأقل لأي وحدة أعلاه', style: TextStyle(color: Colors.orange, fontSize: 12))
+                              else
+                                ...selectedUnits.map((u) => Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 2),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('• مبلغ ${u.label} (${u.quantity} × ${u.unitPrice.toStringAsFixed(0)} ر.ي):', style: const TextStyle(fontSize: 13)),
+                                          Text('${u.subtotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                        ],
+                                      ),
+                                    )),
+                              const Divider(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('الإجمالي الكلي المطلوب:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                  Text(
+                                    '${totalAmount.toStringAsFixed(0)} ر.ي',
+                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                   ],
                 ],
@@ -670,10 +760,13 @@ Future<void> showManualAddToCartDialog(
               icon: const Icon(Icons.add_shopping_cart),
               label: const Text('إضافة للسلة'),
               style: FilledButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: selected == null
+              onPressed: selected == null || unitOptions.where((u) => u.quantity > 0).isEmpty
                   ? null
                   : () {
-                      onAdd(selected!, quantity, selectedUnit, unitMultiplier, unitPrice);
+                      final selectedUnits = unitOptions.where((u) => u.quantity > 0).toList();
+                      for (final u in selectedUnits) {
+                        onAdd(selected!, u.quantity, u.name, u.multiplier, u.unitPrice);
+                      }
                       Navigator.pop(context);
                     },
             ),

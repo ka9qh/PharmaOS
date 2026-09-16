@@ -12,8 +12,9 @@ class CartItemRow extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onUnitChangeRequested;
   final VoidCallback? onFindAlternatives;
-
   final int index;
+  final bool isSelected;
+  final VoidCallback? onSelect;
 
   const CartItemRow({
     super.key,
@@ -25,6 +26,8 @@ class CartItemRow extends StatelessWidget {
     required this.onRemove,
     required this.onUnitChangeRequested,
     this.onFindAlternatives,
+    this.isSelected = false,
+    this.onSelect,
   });
 
   void _showEditPriceDialog(BuildContext context) {
@@ -140,14 +143,23 @@ class CartItemRow extends StatelessWidget {
     final preg = MedicineClinicalHelper.getPregnancySafety(medicineName: item.medicineName);
     final card = MedicineClinicalHelper.getCardiacSafety(medicineName: item.medicineName);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isEven ? Colors.white : const Color(0xFFF8FAFC),
-        border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Row(
-        children: [
+    return InkWell(
+      onTap: onSelect,
+      child: Container(
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFEFF6FF)
+              : (isEven ? Colors.white : const Color(0xFFF8FAFC)),
+          border: Border(
+            bottom: const BorderSide(color: Color(0xFFE2E8F0)),
+            right: isSelected
+                ? const BorderSide(color: Color(0xFF3B82F6), width: 4)
+                : BorderSide.none,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        child: Row(
+          children: [
           SizedBox(
             width: 40,
             child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
@@ -348,6 +360,7 @@ class CartItemRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

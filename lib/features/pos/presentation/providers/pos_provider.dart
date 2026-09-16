@@ -391,7 +391,50 @@ class PosNotifier extends Notifier<PosCartState> {
     }
   }
 
+  Future<void> replaceMedicineInCart(CartItem oldItem, MedicineEntity newMedicine) async {
+    final index = state.items.indexWhere(
+        (i) => i.medicineId == oldItem.medicineId && i.selectedUnitMultiplier == oldItem.selectedUnitMultiplier);
+    if (index == -1) return;
 
+    final currentItem = state.items[index];
+    final available = await GetAvailableQuantityUseCase(sl<InventoryRepository>()).call(newMedicine.id);
+
+    // Calculate unit price for the new medicine matching the requested unit name
+    String unitName = currentItem.selectedUnitName;
+    int multiplier = currentItem.selectedUnitMultiplier;
+    double unitPrice = newMedicine.sellingPrice;
+
+    if (unitName == 'شريط') {
+      final packQty = newMedicine.qtyPerPack ?? 1;
+      unitPrice = (newMedicine.sellingPrice / (packQty > 0 ? packQty : 1));
+    } else if (unitName == 'حبة') {
+      final packQty = newMedicine.qtyPerPack ?? 1;
+      final stripQty = newMedicine.qtyPerStrip ?? 1;
+      final totalPills = packQty * stripQty;
+      unitPrice = (newMedicine.sellingPrice / (totalPills > 0 ? totalPills : 1));
+    } else if (unitName == 'كرتون') {
+      final cartonQty = newMedicine.qtyPerCarton ?? 1;
+      unitPrice = newMedicine.sellingPrice * (cartonQty > 0 ? cartonQty : 1);
+    }
+
+    final updatedEntities = Map<int, MedicineEntity>.from(state.medicineEntities);
+    updatedEntities[newMedicine.id] = newMedicine;
+
+    final updatedItems = [...state.items];
+    updatedItems[index] = CartItem(
+      medicineId: newMedicine.id,
+      medicineName: newMedicine.nameAr,
+      unitPrice: unitPrice,
+      availableStockInBase: available,
+      selectedUnitName: unitName,
+      selectedUnitMultiplier: multiplier,
+      selectedQuantity: currentItem.selectedQuantity,
+      batchId: null,
+      expiryDate: null,
+    );
+
+    state = state.copyWith(items: updatedItems, medicineEntities: updatedEntities, clearError: true);
+  }
 
   void removeItem(int medicineId, int unitMultiplier) {
     state = state.copyWith(
