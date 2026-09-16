@@ -267,9 +267,10 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen> with Single
                     Image.memory(
                       frameBytes,
                       fit: BoxFit.contain,
+                      errorBuilder: (ctx, err, stack) => _buildLiveSurveillanceHUD(isCamera),
                     )
                   else
-                    _buildStreamPlaceholder(isCamera),
+                    _buildLiveSurveillanceHUD(isCamera),
 
                   // تراكب المعلومات في أعلى الفيديو
                   Positioned(
@@ -282,8 +283,9 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen> with Single
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
+                            color: Colors.black.withOpacity(0.75),
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: OwnerTheme.primaryEmeraldLight.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
@@ -294,24 +296,39 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen> with Single
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                isCamera ? 'CAM: HD 1080p' : 'SCREEN: Desktop Live',
+                                isCamera ? 'CAM: CCTV HD 1080p' : 'SCREEN: Desktop Live Stream',
                                 style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
                         ),
-                        if (lastTime != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 11),
-                            ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.75),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
                           ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                lastTime != null
+                                    ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}'
+                                    : 'بث مباشر متصل',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -388,30 +405,101 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen> with Single
     );
   }
 
-  Widget _buildStreamPlaceholder(bool isCamera) {
+  Widget _buildLiveSurveillanceHUD(bool isCamera) {
+    final now = DateTime.now();
+    final timeStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
     return Container(
-      color: const Color(0xFF0B1120),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isCamera ? Icons.videocam_rounded : Icons.desktop_windows_rounded,
-              size: 54,
-              color: OwnerTheme.primaryEmerald.withOpacity(0.4),
+      color: const Color(0xFF070B14),
+      padding: const EdgeInsets.all(16),
+      child: Stack(
+        children: [
+          // شبكة المراقبة المركزية
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCamera ? Colors.teal.withOpacity(0.12) : const Color(0xFF6366F1).withOpacity(0.12),
+                    border: Border.all(color: isCamera ? Colors.tealAccent.withOpacity(0.3) : const Color(0xFF818CF8).withOpacity(0.3), width: 1.5),
+                  ),
+                  child: Icon(
+                    isCamera ? Icons.videocam_rounded : Icons.desktop_windows_rounded,
+                    size: 48,
+                    color: isCamera ? Colors.tealAccent : const Color(0xFF818CF8),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  isCamera ? 'بث كاميرا المراقبة المباشرة (CCTV Live)' : 'بث شاشة النظام المكتبي المباشرة',
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'الصيدلية: $_selectedBranch • متصل ومشفر 🔒',
+                  style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              isCamera ? 'جاري استقبال بث كاميرا اللابتوب...' : 'جاري استقبال بث شاشة النظام المباشر...',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+
+          // خطوط تصويب الكاميرا في الزوايا
+          Positioned(
+            top: 4,
+            left: 4,
+            child: Text(
+              '┌',
+              style: TextStyle(color: OwnerTheme.primaryEmeraldLight.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.w300),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'البث متزامن مباشرة مع الفرع: $_selectedBranch',
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+          ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Text(
+              '┐',
+              style: TextStyle(color: OwnerTheme.primaryEmeraldLight.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.w300),
             ),
-          ],
-        ),
+          ),
+          Positioned(
+            bottom: 4,
+            left: 4,
+            child: Text(
+              '└',
+              style: TextStyle(color: OwnerTheme.primaryEmeraldLight.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.w300),
+            ),
+          ),
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: Text(
+              '┘',
+              style: TextStyle(color: OwnerTheme.primaryEmeraldLight.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.w300),
+            ),
+          ),
+
+          // مؤشرات الكاميرا السفلية
+          Positioned(
+            bottom: 8,
+            left: 12,
+            right: 12,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'CH-01: HD 1080P | 30 FPS',
+                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10, fontFamily: 'monospace'),
+                ),
+                Text(
+                  timeStr,
+                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -52,13 +52,13 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   List<MedicineEntity> _currentAlternatives = [];
   bool _loadingAlternatives = false;
   int? _lastLoadedMedicineId;
+  bool _showAlternativesSection = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(posNotifierProvider.notifier).refreshStats();
-      _loadAlternativesForSelectedMedicine();
     });
   }
 
@@ -128,28 +128,61 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   Future<void> _swapMedicineWithAlternative(CartItem targetItem, MedicineEntity newMedicine) async {
-    ref.read(posNotifierProvider.notifier).replaceMedicineInCart(targetItem, newMedicine);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.swap_horiz, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'تم استبدال "${targetItem.medicineName}" بـ "${newMedicine.nameAr}" فورياً بنجاح 🔄',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+    final ok = await ref.read(posNotifierProvider.notifier).replaceMedicineInCart(targetItem, newMedicine);
+    if (!mounted) return;
+
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.swap_horiz, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'تم استبدال "${targetItem.medicineName}" بـ "${newMedicine.nameAr}" فورياً بنجاح 🔄',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+          backgroundColor: const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-    _lastLoadedMedicineId = null;
-    await _loadAlternativesForSelectedMedicine();
+      );
+      _lastLoadedMedicineId = null;
+      await _loadAlternativesForSelectedMedicine();
+    } else {
+      final error = ref.read(posNotifierProvider).errorMessage ?? 'لا يوجد مخزون متوفر من هذا الدواء البديل';
+      showDialog(
+        context: context,
+        builder: (ctx) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                SizedBox(width: 8),
+                Text('تنبيه عدم توفر المخزون', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: Text(
+              error,
+              style: const TextStyle(fontSize: 14, height: 1.5),
+            ),
+            actions: [
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('حسناً، فهمت'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _submitBarcode(String value) async {
@@ -683,7 +716,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       _discountController.text = '0';
       _amountReceivedController.clear();
       _lastLoadedMedicineId = null;
-      _loadAlternativesForSelectedMedicine();
+      if (_showAlternativesSection) {
+        _loadAlternativesForSelectedMedicine();
+      }
       _barcodeFocusNode.requestFocus();
     }
   }
@@ -693,46 +728,33 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final state = ref.watch(posNotifierProvider);
     final walletsAsync = ref.watch(walletsNotifierProvider);
 
-    // Auto load alternatives if cart changed or items empty
-    if (state.items.isEmpty && _currentAlternatives.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _currentAlternatives = [];
-            _lastLoadedMedicineId = null;
-          });
-        }
-      });
-    } else if (state.items.isNotEmpty && _lastLoadedMedicineId == null && !_loadingAlternatives) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadAlternativesForSelectedMedicine();
-      });
-    }
-
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: const Color(0xFFF1F5F9),
-        floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-        floatingActionButton: FloatingActionButton.extended(
-          backgroundColor: const Color(0xFF6366F1),
-          foregroundColor: Colors.white,
-          elevation: 6,
-          icon: const Icon(Icons.auto_awesome),
-          label: const Text('المساعد الصيدلاني (AI)', style: TextStyle(fontWeight: FontWeight.bold)),
-          onPressed: () => FloatingAiDialog.show(context),
-        ),
         appBar: AppBar(
-          leading: IconButton(
-            tooltip: 'لوحة التحكم وبقية الشاشات',
-            icon: const Icon(Icons.dashboard_outlined),
-            onPressed: () {
-              if (Navigator.canPop(context)) {
-                Navigator.pop(context);
-              } else {
-                context.go('/dashboard');
-              }
-            },
+          toolbarHeight: 62,
+          leadingWidth: 145,
+          leading: Padding(
+            padding: const EdgeInsetsDirectional.only(start: 12, top: 10, bottom: 10),
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                backgroundColor: const Color(0xFF334155),
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Color(0xFF475569)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              icon: const Icon(Icons.arrow_back, size: 16, color: Colors.cyanAccent),
+              label: const Text('لوحة التحكم', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+              onPressed: () {
+                if (Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                } else {
+                  context.go('/dashboard');
+                }
+              },
+            ),
           ),
           title: const Text('نقطة البيع (POS)'),
           actions: [
@@ -792,7 +814,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 onAdd: (medicine, qty, unitName, multiplier, unitPrice) {
                   ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(medicine, qty, unitName, multiplier, unitPrice);
                   _lastLoadedMedicineId = null;
-                  _loadAlternativesForSelectedMedicine();
+                  if (_showAlternativesSection) {
+                    _loadAlternativesForSelectedMedicine();
+                  }
                   _barcodeFocusNode.requestFocus();
                 },
               ),
@@ -851,166 +875,197 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             const SizedBox(width: 10),
           ],
         ),
-        body: Column(
+        body: Stack(
           children: [
-            // شريط إدخال الباركود والبحث
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _barcodeController,
-                      focusNode: _barcodeFocusNode,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
-                        hintText: 'امسح الباركود أو أدخله يدويًا ثم اضغط Enter...',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            Column(
+              children: [
+                // شريط إدخال الباركود والبحث
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _barcodeController,
+                          focusNode: _barcodeFocusNode,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
+                            hintText: 'امسح الباركود أو أدخله يدويًا ثم اضغط Enter...',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          onSubmitted: _submitBarcode,
+                        ),
                       ),
-                      onSubmitted: _submitBarcode,
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        icon: const Icon(Icons.clear_all),
+                        tooltip: 'إفراغ السلة',
+                        onPressed: state.items.isNotEmpty
+                            ? () {
+                                ref.read(posNotifierProvider.notifier).clearCart();
+                                setState(() {
+                                  _currentAlternatives = [];
+                                  _lastLoadedMedicineId = null;
+                                  _showAlternativesSection = false;
+                                });
+                              }
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+
+                if (state.errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text(
+                      state.errorMessage!,
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    icon: const Icon(Icons.clear_all),
-                    tooltip: 'إفراغ السلة',
-                    onPressed: state.items.isNotEmpty
-                        ? () {
-                            ref.read(posNotifierProvider.notifier).clearCart();
-                            setState(() {
-                              _currentAlternatives = [];
-                              _lastLoadedMedicineId = null;
-                            });
-                          }
-                        : null,
+
+                if (state.items.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    child: ClinicalInteractionBanner(
+                      cartMedicines: state.cartMedicines,
+                    ),
                   ),
-                ],
-              ),
-            ),
 
-            if (state.errorMessage != null)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Text(
-                  state.errorMessage!,
-                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-
-            if (state.items.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                child: ClinicalInteractionBanner(
-                  cartMedicines: state.cartMedicines,
-                ),
-              ),
-
-            // منطقة الجداول الواسعة (جدول السلة + جدول البدائل التفاعلي المباشر)
-            Expanded(
-              child: state.items.isEmpty
-                  ? _buildEmptyCartState()
-                  : Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: Column(
-                        children: [
-                          // جدول سلة المبيعات الحالية (Upper Table)
-                          Expanded(
-                            flex: 5,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.05),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                // منطقة الجداول (جدول السلة + جدول البدائل عند الطلب)
+                Expanded(
+                  child: state.items.isEmpty
+                      ? _buildEmptyCartState()
+                      : Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: Column(
+                            children: [
+                              // جدول سلة المبيعات الحالية (يتمدد بالكامل إذا كانت البدائل مخفية)
+                              Expanded(
+                                flex: _showAlternativesSection ? 5 : 1,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.05),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                              child: Column(
-                                children: [
-                                  _buildCartTableHeader(),
-                                  Expanded(
-                                    child: Scrollbar(
-                                      thumbVisibility: true,
-                                      child: SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: SizedBox(
-                                          width: 1100,
-                                          child: ListView.builder(
-                                            itemCount: state.items.length,
-                                            itemBuilder: (context, index) {
-                                              final item = state.items[index];
-                                              return CartItemRow(
-                                                item: item,
-                                                index: index,
-                                                isSelected: index == _selectedCartIndex,
-                                                onSelect: () {
-                                                  setState(() {
-                                                    _selectedCartIndex = index;
-                                                    _lastLoadedMedicineId = null;
-                                                  });
-                                                  _loadAlternativesForSelectedMedicine();
+                                  child: Column(
+                                    children: [
+                                      _buildCartTableHeader(),
+                                      Expanded(
+                                        child: Scrollbar(
+                                          thumbVisibility: true,
+                                          child: SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: SizedBox(
+                                              width: 1100,
+                                              child: ListView.builder(
+                                                itemCount: state.items.length,
+                                                itemBuilder: (context, index) {
+                                                  final item = state.items[index];
+                                                  return CartItemRow(
+                                                    item: item,
+                                                    index: index,
+                                                    isSelected: index == _selectedCartIndex && _showAlternativesSection,
+                                                    onSelect: () {
+                                                      setState(() {
+                                                        _selectedCartIndex = index;
+                                                        _lastLoadedMedicineId = null;
+                                                      });
+                                                      if (_showAlternativesSection) {
+                                                        _loadAlternativesForSelectedMedicine();
+                                                      }
+                                                    },
+                                                    onQuantityChanged: (q) => ref
+                                                        .read(posNotifierProvider.notifier)
+                                                        .updateQuantity(item.medicineId, item.selectedUnitMultiplier, q),
+                                                    onPriceChanged: (p) => ref
+                                                        .read(posNotifierProvider.notifier)
+                                                        .updateItemPrice(item.medicineId, item.selectedUnitMultiplier, p),
+                                                    onBatchChanged: (batchId, expiryDate) => ref
+                                                        .read(posNotifierProvider.notifier)
+                                                        .updateCartItemBatch(item.medicineId, item.selectedUnitMultiplier, batchId, expiryDate),
+                                                    onRemove: () {
+                                                      ref
+                                                          .read(posNotifierProvider.notifier)
+                                                          .removeItem(item.medicineId, item.selectedUnitMultiplier);
+                                                      _lastLoadedMedicineId = null;
+                                                      if (_showAlternativesSection) {
+                                                        _loadAlternativesForSelectedMedicine();
+                                                      }
+                                                    },
+                                                    onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
+                                                    onFindAlternatives: () {
+                                                      setState(() {
+                                                        _selectedCartIndex = index;
+                                                        _showAlternativesSection = true;
+                                                        _lastLoadedMedicineId = null;
+                                                      });
+                                                      _loadAlternativesForSelectedMedicine();
+                                                    },
+                                                  );
                                                 },
-                                                onQuantityChanged: (q) => ref
-                                                    .read(posNotifierProvider.notifier)
-                                                    .updateQuantity(item.medicineId, item.selectedUnitMultiplier, q),
-                                                onPriceChanged: (p) => ref
-                                                    .read(posNotifierProvider.notifier)
-                                                    .updateItemPrice(item.medicineId, item.selectedUnitMultiplier, p),
-                                                onBatchChanged: (batchId, expiryDate) => ref
-                                                    .read(posNotifierProvider.notifier)
-                                                    .updateCartItemBatch(item.medicineId, item.selectedUnitMultiplier, batchId, expiryDate),
-                                                onRemove: () {
-                                                  ref
-                                                      .read(posNotifierProvider.notifier)
-                                                      .removeItem(item.medicineId, item.selectedUnitMultiplier);
-                                                  _lastLoadedMedicineId = null;
-                                                  _loadAlternativesForSelectedMedicine();
-                                                },
-                                                onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
-                                                onFindAlternatives: () => _showAlternativesDialog(context, item),
-                                              );
-                                            },
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
 
-                          const SizedBox(height: 8),
-
-                          // جدول بدائل الدواء المحدد المباشر (Lower Alternatives Table)
-                          Expanded(
-                            flex: 4,
-                            child: _buildAlternativesTableSection(state),
+                              // جدول البدائل الذكية المباشر (يظهر فقط عند الضغط على زر عرض البدائل)
+                              if (_showAlternativesSection) ...[
+                                const SizedBox(height: 8),
+                                Expanded(
+                                  flex: 4,
+                                  child: _buildAlternativesTableSection(state),
+                                ),
+                              ],
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                ),
+
+                // الشريط السفلي العريض لملخص الفاتورة وإتمام البيع
+                _buildBottomInvoiceSummaryBar(context, state, walletsAsync),
+              ],
             ),
 
-            // الشريط السفلي العريض لملخص الفاتورة وإتمام البيع
-            _buildBottomInvoiceSummaryBar(context, state, walletsAsync),
+            // الزر العائم للمساعد الصيدلاني الذكي (مرتفع بأمان ووضوح فوق شريط الدفع)
+            PositionedDirectional(
+              start: 20,
+              bottom: 125,
+              child: FloatingActionButton.extended(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                elevation: 6,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('المساعد الصيدلاني (AI)', style: TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () => FloatingAiDialog.show(context),
+              ),
+            ),
           ],
         ),
       ),
@@ -1035,9 +1090,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   Widget _buildCartTableHeader() {
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E293B),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
       child: const Row(
@@ -1140,6 +1195,16 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   onPressed: () {
                     _lastLoadedMedicineId = null;
                     _loadAlternativesForSelectedMedicine();
+                  },
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 20, color: Colors.redAccent),
+                  tooltip: 'إخفاء جدول البدائل',
+                  onPressed: () {
+                    setState(() {
+                      _showAlternativesSection = false;
+                    });
                   },
                 ),
               ],

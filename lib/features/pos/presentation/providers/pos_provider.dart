@@ -391,13 +391,23 @@ class PosNotifier extends Notifier<PosCartState> {
     }
   }
 
-  Future<void> replaceMedicineInCart(CartItem oldItem, MedicineEntity newMedicine) async {
+  Future<bool> replaceMedicineInCart(CartItem oldItem, MedicineEntity newMedicine) async {
     final index = state.items.indexWhere(
         (i) => i.medicineId == oldItem.medicineId && i.selectedUnitMultiplier == oldItem.selectedUnitMultiplier);
-    if (index == -1) return;
+    if (index == -1) return false;
 
     final currentItem = state.items[index];
     final available = await GetAvailableQuantityUseCase(sl<InventoryRepository>()).call(newMedicine.id);
+    final requiredQtyInBase = currentItem.selectedQuantity * currentItem.selectedUnitMultiplier;
+
+    if (available <= 0 || available < requiredQtyInBase) {
+      state = state.copyWith(
+        errorMessage: available <= 0
+            ? 'عذراً، لا يوجد مخزون متوفر من الدواء البديل "${newMedicine.nameAr}" (الكمية = 0)'
+            : 'الكمية المتوفرة من الدواء البديل "${newMedicine.nameAr}" ($available حبة) غير كافية للكمية المطلوبة ($requiredQtyInBase حبة)',
+      );
+      return false;
+    }
 
     // Calculate unit price for the new medicine matching the requested unit name
     String unitName = currentItem.selectedUnitName;
@@ -434,6 +444,7 @@ class PosNotifier extends Notifier<PosCartState> {
     );
 
     state = state.copyWith(items: updatedItems, medicineEntities: updatedEntities, clearError: true);
+    return true;
   }
 
   void removeItem(int medicineId, int unitMultiplier) {

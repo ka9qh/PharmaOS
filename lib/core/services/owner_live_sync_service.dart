@@ -21,6 +21,7 @@ import '../../features/reports/domain/repositories/reports_repository.dart';
 
 class OwnerLiveSyncService {
   static Timer? _pollingTimer;
+  static Timer? _syncTimer;
   static Timer? _screenStreamTimer;
   static Timer? _cameraStreamTimer;
 
@@ -40,12 +41,18 @@ class OwnerLiveSyncService {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       _pollRelay();
     });
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      CloudSyncService.triggerFullSync();
+    });
     // تشغيل جولة فورية
     _pollRelay();
+    CloudSyncService.triggerFullSync();
   }
 
   static void stop() {
     _pollingTimer?.cancel();
+    _syncTimer?.cancel();
     _screenStreamTimer?.cancel();
     _cameraStreamTimer?.cancel();
     isScreenStreamingActive = false;

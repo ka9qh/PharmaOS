@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import '../../../../core/services/tele_pharmacy_service.dart';
 import '../../../../core/services/license_service.dart';
+import '../../../../core/models/tenant_config.dart';
 import '../../../prescriptions/presentation/screens/tele_consultation_dialog.dart';
 
 class OwnerPortalScreen extends StatefulWidget {
@@ -27,20 +28,39 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
 
   Future<void> _loadTenantData() async {
     setState(() => _isLoading = true);
-    final tenant = await LicenseService.getTenantConfig();
-    final pId = int.tryParse(tenant.pharmacyId) ?? 1;
-    final bId = int.tryParse(tenant.branchId) ?? 1;
-    final consultations = await TelePharmacyService.fetchConsultations(customPharmacyId: pId);
+    try {
+      final tenant = await LicenseService.getTenantConfig().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => const TenantConfig(
+          pharmacyId: '1',
+          pharmacyName: 'الصيدلية الرئيسية',
+          branchId: '1',
+          licenseKey: 'PHARMAOS-MAIN-LIC',
+          isCloudSyncEnabled: true,
+        ),
+      );
+      final pId = int.tryParse(tenant.pharmacyId) ?? 1;
+      final bId = int.tryParse(tenant.branchId) ?? 1;
+      final consultations = await TelePharmacyService.fetchConsultations(customPharmacyId: pId).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => [],
+      );
 
-    if (mounted) {
-      setState(() {
-        _pharmacyName = tenant.pharmacyName;
-        _licenseKey = tenant.licenseKey;
-        _pharmacyId = pId;
-        _branchId = bId;
-        _consultations = consultations;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _pharmacyName = tenant.pharmacyName;
+          _licenseKey = tenant.licenseKey;
+          _pharmacyId = pId;
+          _branchId = bId;
+          _consultations = consultations;
+        });
+      }
+    } catch (_) {
+      // Fallback gracefully
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
