@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/services/device_branch_manager_service.dart';
+import '../widgets/secure_activation_tokens_card.dart';
 
 class DevicesBranchesManagementScreen extends StatefulWidget {
   const DevicesBranchesManagementScreen({super.key});
@@ -227,6 +228,10 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
                 children: [
                   // بطاقة الترحيب والتعريف
                   _buildHeaderCard(),
+                  const SizedBox(height: 16),
+
+                  // بطاقة رموز التفعيل والاقتران المحمية برمز المدير
+                  const SecureActivationTokensCard(),
                   const SizedBox(height: 20),
 
                   // اختيار نمط بنية النظام

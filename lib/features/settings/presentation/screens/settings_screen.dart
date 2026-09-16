@@ -18,6 +18,7 @@ import '../../../../core/services/screenshot_service.dart';
 import '../../../../core/services/ai_floating_settings_service.dart';
 import '../widgets/update_checker_card.dart';
 import '../widgets/cloud_sync_card.dart';
+import '../widgets/secure_activation_tokens_card.dart';
 import 'devices_branches_management_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -123,6 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 children: [
                   const UpdateCheckerCard(),
                   const CloudSyncCard(),
+                  const SecureActivationTokensCard(),
                   Card(
                     color: Colors.teal.shade50,
                     shape: RoundedRectangleBorder(
