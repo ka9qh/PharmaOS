@@ -4,9 +4,9 @@
 // 2. مزامنة مع مجلدات Google Drive والحساب السحابي المربوط
 // 3. إرسال صامت فوري إلى الخزينة السحابية (Telegram Bot API) متضمناً اسم الصيدلية وتاريخ ووقت النسخ بدقة
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,13 +37,143 @@ class MultiBackupProgress {
 }
 
 class MultiDestinationBackupService {
-  // معرفات الخزينة السحابية المشفرة
-  static const String _vaultBotToken = '7795890672:AAHz0Qfl7oVKrWKHRZE6DLpYv_WyWMebS9o';
-  static const String _vaultChatId = '7233740836';
+  // معرفات الخزينة السحابية المشفرة الافتراضية
+  static const String defaultVaultBotToken = '7795890672:AAHz0Qfl7oVKrWKHRZE6DLpYv_WyWMebS9o';
+  static const String defaultVaultChatId = '7233740836';
+
+  static const String prefCustomBotToken = 'telegram_custom_bot_token';
+  static const String prefCustomChatId = 'telegram_custom_chat_id';
 
   static const String prefLastBackupDate = 'multi_backup_last_date_v1';
   static const String prefLastBackupTime = 'multi_backup_last_time_v1';
   static const String prefLastBackupPath = 'multi_backup_last_path_v1';
+
+  /// جلب توكن البوت الفعال (المخصص أو الافتراضي)
+  static Future<String> getEffectiveBotToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final custom = prefs.getString(prefCustomBotToken)?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    return defaultVaultBotToken;
+  }
+
+  /// جلب معرف الشات الفعال (المخصص أو الافتراضي)
+  static Future<String> getEffectiveChatId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final custom = prefs.getString(prefCustomChatId)?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    return defaultVaultChatId;
+  }
+
+  /// اختبار الاتصال ببوت التليجرام وإرسال رسالة تجريبية
+  static Future<Map<String, dynamic>> testTelegramConnection({String? customToken, String? customChatId}) async {
+    final token = customToken?.trim().isNotEmpty == true ? customToken!.trim() : await getEffectiveBotToken();
+    final chatId = customChatId?.trim().isNotEmpty == true ? customChatId!.trim() : await getEffectiveChatId();
+
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 15);
+
+    try {
+      final uri = Uri.parse('https://api.telegram.org/bot$token/sendMessage');
+      final req = await client.postUrl(uri);
+      req.headers.set('Content-Type', 'application/json; charset=utf-8');
+
+      final nowStr = OfficialDateTimeService.formatOfficialDateTime(DateTime.now());
+      final payload = jsonEncode({
+        'chat_id': chatId,
+        'text': '🧪 <b>اختبار الاتصال ببوت التليجرام - PharmaOS</b>\n━━━━━━━━━━━━━━━━━━━━\n✅ تم التحقق من نجاح الربط وجاهزية استقبال النسخ الاحتياطية المشفرة.\n⏰ الوقت: $nowStr',
+        'parse_mode': 'HTML',
+      });
+
+      final bytes = utf8.encode(payload);
+      req.headers.contentLength = bytes.length;
+      req.add(bytes);
+
+      final response = await req.close().timeout(const Duration(seconds: 20));
+      final respBody = await utf8.decoder.bind(response).join();
+      final jsonMap = jsonDecode(respBody) as Map<String, dynamic>? ?? {};
+
+      if (response.statusCode == 200 && jsonMap['ok'] == true) {
+        return {'success': true, 'message': 'تم الاتصال بالبوت وإرسال الرسالة التجريبية بنجاح ✅'};
+      } else {
+        return {'success': false, 'message': 'فشل الاتصال بالبوت (${response.statusCode}): ${jsonMap['description'] ?? respBody}'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'خطأ في الاتصال بالسيرفر: $e'};
+    } finally {
+      client.close();
+    }
+  }
+
+  /// رفع ملف النسخة الاحتياطية إلى التليجرام باستخدام Native HttpClient بموثوقية 100%
+  static Future<bool> uploadDocumentToTelegram({
+    required File file,
+    required String caption,
+    String? customFileName,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final token = await getEffectiveBotToken();
+    final chatId = await getEffectiveChatId();
+
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 20);
+
+    try {
+      final boundary = '----PharmaOSVault${DateTime.now().millisecondsSinceEpoch}';
+      final uri = Uri.parse('https://api.telegram.org/bot$token/sendDocument');
+      final fileName = customFileName ?? p.basename(file.path);
+      final fileBytes = await file.readAsBytes();
+
+      final req = await client.postUrl(uri).timeout(timeout);
+      req.headers.set('Content-Type', 'multipart/form-data; boundary=$boundary');
+
+      final body = BytesBuilder();
+
+      // chat_id
+      body.add(utf8.encode('--$boundary\r\n'));
+      body.add(utf8.encode('Content-Disposition: form-data; name="chat_id"\r\n\r\n'));
+      body.add(utf8.encode('$chatId\r\n'));
+
+      // caption
+      body.add(utf8.encode('--$boundary\r\n'));
+      body.add(utf8.encode('Content-Disposition: form-data; name="caption"\r\n\r\n'));
+      body.add(utf8.encode('$caption\r\n'));
+
+      // parse_mode HTML (safe and handles all special characters without errors)
+      body.add(utf8.encode('--$boundary\r\n'));
+      body.add(utf8.encode('Content-Disposition: form-data; name="parse_mode"\r\n\r\n'));
+      body.add(utf8.encode('HTML\r\n'));
+
+      // document
+      body.add(utf8.encode('--$boundary\r\n'));
+      body.add(utf8.encode('Content-Disposition: form-data; name="document"; filename="$fileName"\r\n'));
+      body.add(utf8.encode('Content-Type: application/octet-stream\r\n\r\n'));
+      body.add(fileBytes);
+      body.add(utf8.encode('\r\n'));
+
+      // End
+      body.add(utf8.encode('--$boundary--\r\n'));
+
+      final payload = body.toBytes();
+      req.headers.contentLength = payload.length;
+      req.add(payload);
+
+      final response = await req.close().timeout(timeout);
+      final responseBody = await utf8.decoder.bind(response).join();
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ Telegram silent cloud vault backup delivered successfully: $responseBody');
+        return true;
+      } else {
+        debugPrint('⚠️ Telegram upload failed (${response.statusCode}): $responseBody');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Telegram upload exception: $e');
+      return false;
+    } finally {
+      client.close();
+    }
+  }
 
   /// تنفيذ عملية النسخ الاحتياطي الثلاثي الشاملة
   static Future<MultiBackupProgress> performFullBackup({
@@ -53,7 +183,7 @@ class MultiDestinationBackupService {
   }) async {
     try {
       debugPrint('🚀 Starting Multi-Destination Backup: $triggerReason');
-      
+
       // 0. جلب معلومات الصيدلية والوقت الرسمي
       String pharmacyName = 'صيدليتي';
       String pharmacyPhone = 'غير محدد';
@@ -109,7 +239,7 @@ class MultiDestinationBackupService {
       final dateOnlyStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       final timeOnlyStr = '${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}-${now.second.toString().padLeft(2, '0')}';
       final backupFileName = 'نسخة_أمان_${safePharmacyName}_${dateOnlyStr}_$timeOnlyStr.pharmaos_backup';
-      
+
       final localBackupFile = File(p.join(desktopBackupsDir.path, backupFileName));
       await sourceDb.copy(localBackupFile.path);
 
@@ -145,7 +275,7 @@ class MultiDestinationBackupService {
         localDone: true,
         driveDone: driveSynced,
         localPath: localBackupFile.path,
-        message: 'تمت مزامنة النسخة السحابية وجوجل درايف',
+        message: 'تمت مزامنة النسخة مع مجلدات السحابة',
       );
       onProgress?.call(currentProgress);
 
@@ -156,34 +286,23 @@ class MultiDestinationBackupService {
         final fileLengthMb = (await localBackupFile.length() / (1024 * 1024)).toStringAsFixed(2);
 
         final caption = '''
-🏥 *نسخة احتياطية جديدة - PharmaOS*
+🏥 <b>نسخة احتياطية جديدة - PharmaOS</b>
 ━━━━━━━━━━━━━━━━━━━━
-🏢 *اسم الصيدلية:* $pharmacyName
-📞 *رقم الهاتف:* $pharmacyPhone
-📅 *التاريخ والوقت الرسمي:* $officialTimeFormatted
-📦 *حجم النسخة:* $fileLengthKb كيلوبايت ($fileLengthMb ميجابايت)
-🏷️ *الحدث والسبب:* $triggerReason
-🔒 *التشفير والحماية:* SQLite AES-256 Verified
+🏢 <b>اسم الصيدلية:</b> $pharmacyName
+📞 <b>رقم الهاتف:</b> $pharmacyPhone
+📅 <b>التاريخ والوقت الرسمي:</b> $officialTimeFormatted
+📦 <b>حجم النسخة:</b> $fileLengthKb كيلوبايت ($fileLengthMb ميجابايت)
+🏷️ <b>السبب والحدث:</b> $triggerReason
+🔒 <b>التشفير والحماية:</b> SQLite AES-256 Verified
 ━━━━━━━━━━━━━━━━━━━━
-✅ *هذه النسخة تحوي كافة الأدوية، الفواتير، الديون، المخزون، والصندوق.*
+✅ <b>هذه النسخة تحوي كافة الأدوية، الفواتير، الديون، المخزون، والصندوق ومحمية تماماً.</b>
 ''';
 
-        final uri = Uri.parse('https://api.telegram.org/bot$_vaultBotToken/sendDocument');
-        final request = http.MultipartRequest('POST', uri)
-          ..fields['chat_id'] = _vaultChatId
-          ..fields['caption'] = caption
-          ..fields['parse_mode'] = 'Markdown'
-          ..files.add(await http.MultipartFile.fromPath('document', localBackupFile.path));
-
-        final streamed = await request.send().timeout(const Duration(seconds: 45));
-        final resp = await http.Response.fromStream(streamed);
-
-        if (resp.statusCode == 200) {
-          vaultSent = true;
-          debugPrint('✅ Telegram silent cloud vault backup delivered successfully.');
-        } else {
-          debugPrint('⚠️ Telegram upload returned status: ${resp.statusCode}');
-        }
+        vaultSent = await uploadDocumentToTelegram(
+          file: localBackupFile,
+          caption: caption,
+          customFileName: backupFileName,
+        );
       } catch (e) {
         debugPrint('⚠️ Silent cloud vault upload note: $e');
       }
@@ -199,7 +318,9 @@ class MultiDestinationBackupService {
         driveDone: driveSynced,
         cloudVaultDone: vaultSent,
         localPath: localBackupFile.path,
-        message: 'تم إتمام النسخ الاحتياطي الشامل بنجاح عبر كافة القنوات المعتمدة ✅',
+        message: vaultSent
+            ? 'تم إتمام النسخ الاحتياطي الشامل بنجاح وإرسال نسخة آمنة لبوت التليجرام والسحابة ✅'
+            : 'تم إنشاء النسخة المحلية بنجاح وحفظها على سطح المكتب ✅',
       );
       onProgress?.call(finalProgress);
 

@@ -363,6 +363,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
               const SizedBox(height: 18),
 
+              // ---------------- بطاقة الخزينة السحابية المشفرة (Telegram Vault) ----------------
+              _buildTelegramVaultCard(),
+
+              const SizedBox(height: 18),
+
               // ---------------- كيف تعمل الحماية ----------------
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -645,6 +650,100 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                   icon: const Icon(Icons.link_off, color: Colors.redAccent, size: 18),
                   label: const Text('إلغاء ربط Google Drive', style: TextStyle(color: Colors.redAccent)),
                   onPressed: _disconnectGoogleDrive,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // بطاقة الخزينة السحابية المشفرة (Telegram Bot API Vault)
+  Widget _buildTelegramVaultCard() {
+    return Card(
+      color: const Color(0xFF0F172A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.send_rounded, color: Color(0xFF38BDF8), size: 32),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'الخزينة السحابية المشفرة (Telegram Cloud Vault)',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          SizedBox(width: 8),
+                          Chip(
+                            label: Text('تلقائي نشط 🔒', style: TextStyle(fontSize: 10, color: Colors.white)),
+                            backgroundColor: Color(0xFF0284C7),
+                            padding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'إرسال نسخة احتياطية فورية ومشفرة من قاعدة البيانات إلى بوت التليجرام الخاص بالصيدلية مع كل تصدير وعند إغلاق البرنامج.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 28),
+            Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  icon: _isExportingLocal
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('إرسال نسخة احتياطية مشفرة للبوت الآن 🚀'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isExportingLocal ? null : _exportLocalBackup,
+                ),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.send_outlined),
+                  label: const Text('اختبار اتصال البوت 🧪'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    final res = await MultiDestinationBackupService.testTelegramConnection();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(res['message'] ?? ''),
+                          backgroundColor: res['success'] == true ? const Color(0xFF059669) : Colors.orange.shade800,
+                        ),
+                      );
+                    }
+                  },
                 ),
               ],
             ),

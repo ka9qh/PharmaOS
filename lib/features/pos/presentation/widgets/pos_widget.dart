@@ -345,25 +345,11 @@ class CartItemRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (onFindAlternatives != null)
-                  FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: isSelected ? const Color(0xFF10B981) : const Color(0xFFECFDF5),
-                      foregroundColor: isSelected ? Colors.white : const Color(0xFF047857),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      visualDensity: VisualDensity.compact,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: const BorderSide(color: Color(0xFF6EE7B7)),
-                      ),
-                    ),
-                    icon: const Icon(Icons.swap_horizontal_circle_outlined, size: 16),
-                    label: const Text(
-                      'عرض البدائل 🔄',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.swap_horizontal_circle_outlined, size: 20, color: Color(0xFF10B981)),
                     onPressed: onFindAlternatives,
+                    tooltip: 'البدائل العلمية والمخزنية المتوفرة',
                   ),
-                const SizedBox(width: 6),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
                   onPressed: onRemove,

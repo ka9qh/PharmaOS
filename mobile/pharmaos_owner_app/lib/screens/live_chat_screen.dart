@@ -63,10 +63,29 @@ class _LiveChatScreenState extends State<LiveChatScreen> {
     final text = _textController.text.trim();
     if (text.isEmpty && audioBase64 == null && imageBase64 == null) return;
 
-    setState(() => _isSending = true);
+    final config = await OwnerApiService.getConfig();
+    final branchId = _selectedBranch == 'كافة الفروع' ? 'main' : _selectedBranch;
+
+    final tempMsg = ChatMessage(
+      id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+      pharmacyId: config?.pharmacyId ?? 1,
+      branchId: branchId,
+      deviceId: 'mobile-owner',
+      senderName: config?.managerName ?? 'المدير العام',
+      senderRole: 'owner',
+      text: text,
+      audioBase64: audioBase64,
+      imageBase64: imageBase64,
+      createdAt: DateTime.now(),
+    );
+
+    setState(() {
+      _messages.add(tempMsg);
+      _isSending = true;
+    });
+    _scrollToBottom();
     _textController.clear();
 
-    final branchId = _selectedBranch == 'كافة الفروع' ? 'main' : _selectedBranch;
     final success = await OwnerApiService.sendChatMessage(
       text: text,
       audioBase64: audioBase64,
@@ -77,10 +96,13 @@ class _LiveChatScreenState extends State<LiveChatScreen> {
     if (mounted) {
       setState(() => _isSending = false);
       if (success) {
-        _loadMessages();
+        _loadMessages(silent: true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر إرسال الرسالة، تأكد من الاتصال')),
+          const SnackBar(
+            content: Text('تعذر مزامنة الرسالة مع السحابة، تأكد من اتصال الإنترنت'),
+            duration: Duration(seconds: 3),
+          ),
         );
       }
     }

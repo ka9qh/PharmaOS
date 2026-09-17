@@ -162,25 +162,7 @@ class OwnerApiService {
       debugPrint('fetchBackupsHistory error: $e');
     }
 
-    // سجل افتراضي للمعاينة
-    return [
-      CloudBackupRecord(
-        id: 'bk-1',
-        fileName: 'PharmaOS_Daily_Auto_2026-09-16.pharmaos_backup',
-        fileSize: 4850000,
-        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-        type: 'telegram_vault',
-        summaryText: 'نسخة سحابية مؤمنة في الخزينة المشفرة + قوقل درايف + محلي',
-      ),
-      CloudBackupRecord(
-        id: 'bk-2',
-        fileName: 'PharmaOS_Auto_Midnight_2026-09-15.pharmaos_backup',
-        fileSize: 4720000,
-        createdAt: DateTime.now().subtract(const Duration(hours: 24)),
-        type: 'telegram_vault',
-        summaryText: 'نسخة منتصف الليل التلقائية الرسمية Z-Report',
-      ),
-    ];
+    return [];
   }
 
   /// جلب أحدث إطار لبث الفيديو الحي (شاشة أو كاميرا)
@@ -190,9 +172,6 @@ class OwnerApiService {
 
     try {
       String query = '${config.supabaseUrl}/rest/v1/cloud_stream_frames?pharmacy_id=eq.${config.pharmacyId}&channel=eq.$channel';
-      if (branchId != null) {
-        query += '&branch_id=eq.$branchId';
-      }
       query += '&order=timestamp.desc&limit=1';
 
       final response = await http.get(Uri.parse(query), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 4));
@@ -215,18 +194,18 @@ class OwnerApiService {
     return sendRemoteCommand(type, {'channel': channel, 'enabled': start}, branchId: branchId);
   }
 
-  /// جلب كامل جدول المخزون والأدوية
-  static Future<List<CloudMedicine>> fetchMedicinesCatalog({int limit = 150}) async {
+  /// جلب كامل جدول المخزون والأدوية الحقيقية
+  static Future<List<CloudMedicine>> fetchMedicinesCatalog({int limit = 200}) async {
     final config = await getConfig();
     if (config == null) return [];
 
     try {
       final url = '${config.supabaseUrl}/rest/v1/cloud_medicines?pharmacy_id=eq.${config.pharmacyId}&order=name_ar.asc&limit=$limit';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 12));
+      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
-        if (data is List && data.isNotEmpty) {
+        if (data is List) {
           return data.map((j) => CloudMedicine.fromJson(j)).toList();
         }
       }
@@ -234,14 +213,7 @@ class OwnerApiService {
       debugPrint('fetchMedicinesCatalog error: $e');
     }
 
-    // عينة نموذجية في حال العمل أوفلاين
-    return [
-      CloudMedicine(id: 1, pharmacyId: config.pharmacyId, nameAr: 'بنادول إكسترا أحمر', nameEn: 'Panadol Extra', barcode: '629110012345', sellingPrice: 1500, purchasePrice: 1100, availableQuantity: 45),
-      CloudMedicine(id: 2, pharmacyId: config.pharmacyId, nameAr: 'أوجمنتين 1 جم', nameEn: 'Augmentin 1g', barcode: '629110054321', sellingPrice: 3800, purchasePrice: 3100, availableQuantity: 28),
-      CloudMedicine(id: 3, pharmacyId: config.pharmacyId, nameAr: 'بروفين 400 ملجم', nameEn: 'Brufen 400mg', barcode: '629110098765', sellingPrice: 1200, purchasePrice: 850, availableQuantity: 62),
-      CloudMedicine(id: 4, pharmacyId: config.pharmacyId, nameAr: 'أوميبرازول 20 ملجم', nameEn: 'Omeprazole 20mg', barcode: '629110077889', sellingPrice: 2200, purchasePrice: 1600, availableQuantity: 34),
-      CloudMedicine(id: 5, pharmacyId: config.pharmacyId, nameAr: 'سيفكس 400 ملجم كبسول', nameEn: 'Cefix 400mg', barcode: '629110044556', sellingPrice: 4500, purchasePrice: 3600, availableQuantity: 19),
-    ];
+    return [];
   }
 
   /// البحث في الأدوية
@@ -323,13 +295,7 @@ class OwnerApiService {
           return data.map((j) => CloudSupplier.fromJson(j)).toList();
         }
       }
-    } catch (_) {}
-
-    return [
-      CloudSupplier(id: 1, pharmacyId: config.pharmacyId, name: 'مؤسسة الشفاء للأدوية', contactInfo: '771234567'),
-      CloudSupplier(id: 2, pharmacyId: config.pharmacyId, name: 'شركة الشرق الأوسط الطبية', contactInfo: '777654321'),
-      CloudSupplier(id: 3, pharmacyId: config.pharmacyId, name: 'وكالة العالمية فارما', contactInfo: '733112233'),
-    ];
+    return [];
   }
 
   /// إضافة مورد جديد

@@ -304,7 +304,30 @@ class _RemoteInventoryScreenState extends State<RemoteInventoryScreen> {
                   ? const Center(child: CircularProgressIndicator(color: OwnerTheme.primaryEmeraldLight))
                   : _filteredMedicines.isEmpty
                       ? Center(
-                          child: Text('لا توجد أدوية مطابقة للبحث', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.inventory_2_outlined, size: 64, color: Colors.white.withOpacity(0.3)),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _searchController.text.isNotEmpty
+                                      ? 'لا توجد نتائج مطابقة لبحثك'
+                                      : 'لا توجد أدوية متزامنة سحابياً بعد\nاضغط على زر (مزامنة سحابية الآن) في بوابة تطبيق المدير على النظام المكتبي',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13, height: 1.5),
+                                ),
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(backgroundColor: OwnerTheme.primaryEmerald),
+                                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                                  label: const Text('تحديث المخزون الآن'),
+                                  onPressed: _loadMedicines,
+                                ),
+                              ],
+                            ),
+                          ),
                         )
                       : _isGridView
                           ? _buildExcelTableView()
