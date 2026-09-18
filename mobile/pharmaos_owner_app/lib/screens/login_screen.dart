@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
 import '../widgets/luxury_background.dart';
+import '../widgets/luxury_app_avatar.dart';
 import 'main_navigation_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -80,25 +81,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // الشعار والأيقونة بتأثير متوهج
-                    Container(
-                      padding: const EdgeInsets.all(22),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: OwnerTheme.emeraldGradient,
-                        boxShadow: [
-                          BoxShadow(
-                            color: OwnerTheme.primaryEmerald.withOpacity(0.4),
-                            blurRadius: 32,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.admin_panel_settings_rounded,
-                        size: 56,
-                        color: Colors.white,
-                      ),
+                    // الشعار والأفاتار الفاخر ثلاثي الأبعاد بتأثير متوهج
+                    const LuxuryAppAvatar(
+                      size: 116,
+                      showBadge: true,
+                      badgeText: '👑 المدير التنفيذي',
                     ),
                     const SizedBox(height: 24),
 

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../services/app_updater_service.dart';
+import '../widgets/luxury_app_avatar.dart';
 import 'login_screen.dart';
 
 class SettingsTab extends StatefulWidget {
@@ -231,13 +232,10 @@ class _SettingsTabState extends State<SettingsTab> {
               ),
               child: Column(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.store_rounded, color: Colors.cyanAccent, size: 36),
+                  const LuxuryAppAvatar(
+                    size: 80,
+                    showBadge: true,
+                    badgeText: '👑 المدير العام',
                   ),
                   const SizedBox(height: 12),
                   Text(

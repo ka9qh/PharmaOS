@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../services/app_updater_service.dart';
+import '../widgets/luxury_app_avatar.dart';
 
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
@@ -77,6 +78,10 @@ class _DashboardTabState extends State<DashboardTab> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
         elevation: 0,
+        leading: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: LuxuryAppAvatar(size: 38, showBadge: true),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
