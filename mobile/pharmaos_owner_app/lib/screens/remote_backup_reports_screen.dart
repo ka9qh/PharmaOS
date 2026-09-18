@@ -70,7 +70,7 @@ class _RemoteBackupReportsScreenState extends State<RemoteBackupReportsScreen> {
                   SizedBox(height: 10),
                   Text('1. الخزينة المحلية بجهاز الصيدلية', style: TextStyle(color: Colors.white, fontSize: 12)),
                   Text('2. الحساب السحابي المربوط بالنظام', style: TextStyle(color: Colors.white, fontSize: 12)),
-                  Text('3. الخزينة السحابية الآمنة المشفرة (Telegram Vault)', style: TextStyle(color: OwnerTheme.accentGoldLight, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Text('3. الخزينة السحابية الآمنة المشفرة (Cloud Security Vault)', style: TextStyle(color: OwnerTheme.accentGoldLight, fontSize: 12, fontWeight: FontWeight.bold)),
                 ],
               ),
               actions: [

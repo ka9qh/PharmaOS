@@ -1,4 +1,4 @@
-// بطاقة إعدادات واختبار بوت التليجرام والخزينة السحابية - PharmaOS
+// بطاقة الخزينة السحابية المشفرة - PharmaOS
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +15,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
   final _botTokenController = TextEditingController();
   final _chatIdController = TextEditingController();
   bool _isLoading = false;
-  String _statusMessage = 'الخزينة السحابية جاهزة لاستقبال النسخ الاحتياطية';
+  String _statusMessage = 'الخزينة السحابية جاهزة ومحمية بالكامل';
 
   @override
   void initState() {
@@ -42,7 +42,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم حفظ إعدادات بوت التليجرام بنجاح ✅'),
+          content: Text('تم حفظ مفاتيح الخزينة السحابية المشفرة بنجاح ✅'),
           backgroundColor: Colors.teal,
         ),
       );
@@ -52,7 +52,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
   Future<void> _testConnection() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'جاري اختبار الاتصال وإرسال رسالة تجريبية للبوت...';
+      _statusMessage = 'جاري فحص الاتصال بالخزينة السحابية...';
     });
 
     final res = await MultiDestinationBackupService.testTelegramConnection(
@@ -63,7 +63,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
     if (mounted) {
       setState(() {
         _isLoading = false;
-        _statusMessage = res['message'] ?? 'اكتمل الاختبار';
+        _statusMessage = res['message'] ?? 'اكتمل الفحص';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -78,7 +78,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
   Future<void> _sendImmediateBackup() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'جاري تحضير قاعدة البيانات ورفع النسخة للبوت...';
+      _statusMessage = 'جاري تحضير قاعدة البيانات وتأمينها سحابياً...';
     });
 
     final progress = await MultiDestinationBackupService.performFullBackup(
@@ -89,7 +89,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
       setState(() {
         _isLoading = false;
         _statusMessage = progress.cloudVaultDone
-            ? 'تم إرسال النسخة الاحتياطية بنجاح إلى بوت التليجرام والسحابة ✅'
+            ? 'تم تأمين النسخة الاحتياطية بنجاح في الخزينة السحابية ✅'
             : 'تم حفظ النسخة محلياً (${progress.message})';
       });
 
@@ -132,7 +132,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
                     color: const Color(0xFF0284C7).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.send_rounded, color: Color(0xFF0284C7), size: 28),
+                  child: const Icon(Icons.shield_moon_rounded, color: Color(0xFF0284C7), size: 28),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -142,7 +142,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
                       Row(
                         children: [
                           Text(
-                            'الخزينة السحابية المشفرة (Telegram Vault)',
+                            'الخزينة السحابية المشفرة (Cloud Security Vault)',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                           ),
                           SizedBox(width: 8),
@@ -154,7 +154,7 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
                         ],
                       ),
                       Text(
-                        'إرسال تلقائي وفوري لملف النسخة الاحتياطية المشفرة إلى بوت التليجرام لحماية بياناتك من التلف أو السرقة',
+                        'إرسال تلقائي وفوري لملف النسخة الاحتياطية المشفرة سحابياً لحماية بياناتك من التلف أو السرقة',
                         style: TextStyle(fontSize: 12, color: Colors.blueGrey),
                       ),
                     ],
@@ -179,10 +179,10 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
                         child: TextField(
                           controller: _botTokenController,
                           decoration: const InputDecoration(
-                            labelText: 'رمز بوت التليجرام (Bot Token)',
+                            labelText: 'مفتاح أمان الخزينة السحابية (Vault Key)',
                             isDense: true,
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.smart_toy_outlined, size: 20),
+                            prefixIcon: Icon(Icons.key_rounded, size: 20),
                           ),
                           style: const TextStyle(fontSize: 12),
                         ),
@@ -192,10 +192,10 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
                         child: TextField(
                           controller: _chatIdController,
                           decoration: const InputDecoration(
-                            labelText: 'معرف المحادثة أو القناة (Chat ID)',
+                            labelText: 'معرف الخزينة أو القناة المشفرة (Vault ID)',
                             isDense: true,
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.chat_bubble_outline, size: 20),
+                            prefixIcon: Icon(Icons.tag_rounded, size: 20),
                           ),
                           style: const TextStyle(fontSize: 12),
                         ),
@@ -227,8 +227,8 @@ class _TelegramVaultSettingsCardState extends State<TelegramVaultSettingsCard> {
                       FilledButton.tonalIcon(
                         icon: _isLoading
                             ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.send_outlined, size: 16),
-                        label: const Text('اختبار الاتصال 🧪', style: TextStyle(fontSize: 12)),
+                            : const Icon(Icons.verified_outlined, size: 16),
+                        label: const Text('فحص الجاهزية 🧪', style: TextStyle(fontSize: 12)),
                         onPressed: _isLoading ? null : _testConnection,
                       ),
                       const SizedBox(width: 8),

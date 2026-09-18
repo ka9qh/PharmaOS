@@ -295,6 +295,7 @@ class OwnerApiService {
           return data.map((j) => CloudSupplier.fromJson(j)).toList();
         }
       }
+    } catch (_) {}
     return [];
   }
 

@@ -363,8 +363,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
               const SizedBox(height: 18),
 
-              // ---------------- بطاقة الخزينة السحابية المشفرة (Telegram Vault) ----------------
-              _buildTelegramVaultCard(),
+              // ---------------- بطاقة الخزينة السحابية المشفرة (Cloud Security Vault) ----------------
+              _buildCloudVaultCard(),
 
               const SizedBox(height: 18),
 
@@ -659,8 +659,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     );
   }
 
-  // بطاقة الخزينة السحابية المشفرة (Telegram Bot API Vault)
-  Widget _buildTelegramVaultCard() {
+  // بطاقة الخزينة السحابية المشفرة (Cloud Security Vault)
+  Widget _buildCloudVaultCard() {
     return Card(
       color: const Color(0xFF0F172A),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -677,7 +677,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                     color: const Color(0xFF0284C7).withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.send_rounded, color: Color(0xFF38BDF8), size: 32),
+                  child: const Icon(Icons.shield_moon_rounded, color: Color(0xFF38BDF8), size: 32),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -687,7 +687,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       Row(
                         children: [
                           Text(
-                            'الخزينة السحابية المشفرة (Telegram Cloud Vault)',
+                            'الخزينة السحابية المشفرة (Cloud Security Vault)',
                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           SizedBox(width: 8),
@@ -700,7 +700,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'إرسال نسخة احتياطية فورية ومشفرة من قاعدة البيانات إلى بوت التليجرام الخاص بالصيدلية مع كل تصدير وعند إغلاق البرنامج.',
+                        'إرسال نسخة احتياطية فورية ومشفرة من قاعدة البيانات إلى الخزينة السحابية الآمنة مع كل تصدير وعند إغلاق البرنامج.',
                         style: TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
@@ -717,7 +717,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                   icon: _isExportingLocal
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Icon(Icons.cloud_upload_outlined),
-                  label: const Text('إرسال نسخة احتياطية مشفرة للبوت الآن 🚀'),
+                  label: const Text('إرسال نسخة أمان سحابية فورية 🚀'),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0284C7),
                     foregroundColor: Colors.white,
@@ -727,8 +727,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                   onPressed: _isExportingLocal ? null : _exportLocalBackup,
                 ),
                 FilledButton.tonalIcon(
-                  icon: const Icon(Icons.send_outlined),
-                  label: const Text('اختبار اتصال البوت 🧪'),
+                  icon: const Icon(Icons.verified_user_outlined),
+                  label: const Text('فحص جاهزية الخزينة السحابية 🧪'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

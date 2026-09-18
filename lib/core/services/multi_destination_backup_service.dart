@@ -64,7 +64,7 @@ class MultiDestinationBackupService {
     return defaultVaultChatId;
   }
 
-  /// اختبار الاتصال ببوت التليجرام وإرسال رسالة تجريبية
+  /// فحص الاتصال بالخزينة السحابية وإرسال إشعار فحص
   static Future<Map<String, dynamic>> testTelegramConnection({String? customToken, String? customChatId}) async {
     final token = customToken?.trim().isNotEmpty == true ? customToken!.trim() : await getEffectiveBotToken();
     final chatId = customChatId?.trim().isNotEmpty == true ? customChatId!.trim() : await getEffectiveChatId();
@@ -80,7 +80,7 @@ class MultiDestinationBackupService {
       final nowStr = OfficialDateTimeService.formatOfficialDateTime(DateTime.now());
       final payload = jsonEncode({
         'chat_id': chatId,
-        'text': '🧪 <b>اختبار الاتصال ببوت التليجرام - PharmaOS</b>\n━━━━━━━━━━━━━━━━━━━━\n✅ تم التحقق من نجاح الربط وجاهزية استقبال النسخ الاحتياطية المشفرة.\n⏰ الوقت: $nowStr',
+        'text': '🧪 <b>فحص الاتصال بالخزينة السحابية المشفرة - PharmaOS</b>\n━━━━━━━━━━━━━━━━━━━━\n✅ تم التحقق من جاهزية استقبال النسخ الاحتياطية المشفرة بنجاح.\n⏰ الوقت: $nowStr',
         'parse_mode': 'HTML',
       });
 
@@ -93,9 +93,9 @@ class MultiDestinationBackupService {
       final jsonMap = jsonDecode(respBody) as Map<String, dynamic>? ?? {};
 
       if (response.statusCode == 200 && jsonMap['ok'] == true) {
-        return {'success': true, 'message': 'تم الاتصال بالبوت وإرسال الرسالة التجريبية بنجاح ✅'};
+        return {'success': true, 'message': 'تم التحقق من جاهزية الخزينة السحابية بنجاح ✅'};
       } else {
-        return {'success': false, 'message': 'فشل الاتصال بالبوت (${response.statusCode}): ${jsonMap['description'] ?? respBody}'};
+        return {'success': false, 'message': 'تنبيه فحص الخزينة السحابية (${response.statusCode}): ${jsonMap['description'] ?? respBody}'};
       }
     } catch (e) {
       return {'success': false, 'message': 'خطأ في الاتصال بالسيرفر: $e'};
@@ -104,7 +104,7 @@ class MultiDestinationBackupService {
     }
   }
 
-  /// رفع ملف النسخة الاحتياطية إلى التليجرام باستخدام Native HttpClient بموثوقية 100%
+  /// رفع ملف النسخة الاحتياطية إلى الخزينة السحابية المشفرة باستخدام Native HttpClient بموثوقية 100%
   static Future<bool> uploadDocumentToTelegram({
     required File file,
     required String caption,
@@ -319,7 +319,7 @@ class MultiDestinationBackupService {
         cloudVaultDone: vaultSent,
         localPath: localBackupFile.path,
         message: vaultSent
-            ? 'تم إتمام النسخ الاحتياطي الشامل بنجاح وإرسال نسخة آمنة لبوت التليجرام والسحابة ✅'
+            ? 'تم إتمام النسخ الاحتياطي الشامل بنجاح وتأمين نسخة مشفرة في الخزينة السحابية ✅'
             : 'تم إنشاء النسخة المحلية بنجاح وحفظها على سطح المكتب ✅',
       );
       onProgress?.call(finalProgress);
