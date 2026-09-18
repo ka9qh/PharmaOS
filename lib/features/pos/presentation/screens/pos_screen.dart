@@ -27,11 +27,16 @@ import '../../../medicines/presentation/screens/wanted_medicines_screen.dart';
 import '../../../../core/widgets/floating_ai_assistant.dart';
 import '../../../../core/widgets/searchable_entity_picker.dart';
 import '../../../../core/database/app_database.dart';
+import 'dart:async';
 import '../../../doctors/presentation/providers/doctors_provider.dart';
 import '../../../prescriptions/presentation/providers/prescriptions_provider.dart';
 import '../../../prescriptions/presentation/screens/tele_consultation_dialog.dart';
 import '../../../sales/domain/repositories/sales_repository.dart';
 import '../../domain/entities/pos_entity.dart';
+import '../../../../core/services/shift_manager_service.dart';
+import '../../../../core/services/official_date_time_service.dart';
+import '../../../closing/presentation/widgets/shift_start_dialog.dart';
+import '../../../closing/presentation/widgets/pre_exit_shift_closing_dialog.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
   const PosScreen({super.key});
@@ -49,17 +54,45 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   int? _selectedWalletId;
 
   int _selectedCartIndex = 0;
+  ActiveShiftModel? _activeShift;
+  DateTime _currentClock = DateTime.now();
+  StreamSubscription? _clockSub;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(posNotifierProvider.notifier).refreshStats();
+    _clockSub = OfficialDateTimeService.secondStream.listen((time) {
+      if (mounted) setState(() => _currentClock = time);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      ref.read(posNotifierProvider.notifier).refreshStats();
+      await _checkAndPromptShift();
+    });
+  }
+
+  Future<void> _checkAndPromptShift({bool forceDialog = false}) async {
+    final active = await ShiftManagerService.getActiveShift();
+    if (active == null || forceDialog) {
+      if (!mounted) return;
+      final newShift = await ShiftStartDialog.show(context, isDismissible: active != null);
+      if (mounted && newShift != null) {
+        setState(() {
+          _activeShift = newShift;
+        });
+        ref.read(posNotifierProvider.notifier).refreshStats();
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _activeShift = active;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    _clockSub?.cancel();
     _barcodeController.dispose();
     _barcodeFocusNode.dispose();
     _discountController.dispose();
@@ -758,6 +791,69 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                 child: Text(
                   'نقد درج الصيدلية: ${state.cashInDrawerTotal.toStringAsFixed(0)} ر.ي',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 13),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // شارة الوردية / اليومية النشطة
+            FilledButton.tonalIcon(
+              style: FilledButton.styleFrom(
+                backgroundColor: _activeShift != null ? const Color(0xFF10B981).withValues(alpha: 0.15) : Colors.amber.shade100,
+                foregroundColor: _activeShift != null ? const Color(0xFF047857) : Colors.amber.shade900,
+              ),
+              icon: Icon(_activeShift != null ? Icons.verified_user : Icons.warning_amber_rounded, size: 18),
+              label: Text(
+                _activeShift != null
+                    ? 'الوردية #${_activeShift!.id} (${_activeShift!.cashierName})'
+                    : 'بدء وردية جديدة',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              onPressed: () => _checkAndPromptShift(forceDialog: true),
+            ),
+            const SizedBox(width: 6),
+            // زر إغلاق اليومية المباشر
+            FilledButton.tonalIcon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                foregroundColor: const Color(0xFF6D28D9),
+              ),
+              icon: const Icon(Icons.assessment_outlined, size: 18),
+              label: const Text('إغلاق اليومية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              onPressed: () async {
+                await PreExitShiftClosingDialog.show(
+                  context,
+                  onProceedToBackupAndExit: () {
+                    Navigator.of(context, rootNavigator: true).pop();
+                    _checkAndPromptShift(forceDialog: true);
+                  },
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+            // الساعة والوقت المباشر الدقيق بالثواني
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF334155)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.access_time_filled, color: Color(0xFF38BDF8), size: 15),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${OfficialDateTimeService.formatDateArabicWithDay(_currentClock)} | ${OfficialDateTimeService.formatLiveTime(_currentClock)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -17,6 +17,7 @@ import 'core/services/cloud_backup_service.dart';
 import 'core/widgets/pre_exit_backup_dialog.dart';
 import 'core/services/owner_live_sync_service.dart';
 import 'core/widgets/owner_floating_notification.dart';
+import 'features/closing/presentation/widgets/pre_exit_shift_closing_dialog.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,11 +80,20 @@ class _WindowCloseListener extends WindowListener {
     bool isPreventClose = await windowManager.isPreventClose();
     if (isPreventClose) {
       try {
-        debugPrint('App closing intercepted. Triggering mandatory pre-exit backup dialog...');
+        debugPrint('App closing intercepted. Triggering shift closing & mandatory pre-exit backup dialog...');
         
         final context = AppRouter.rootNavigatorKey.currentContext;
         if (context != null && context.mounted) {
-          await PreExitBackupDialog.show(context);
+          await PreExitShiftClosingDialog.show(
+            context,
+            onProceedToBackupAndExit: () async {
+              if (context.mounted) {
+                await PreExitBackupDialog.show(context);
+              } else {
+                await windowManager.destroy();
+              }
+            },
+          );
         } else {
           // في حال عدم توفر السياق، يتم التنفيذ في الخلفية
           await MultiDestinationBackupService.performFullBackup(
@@ -93,7 +103,7 @@ class _WindowCloseListener extends WindowListener {
           await windowManager.destroy();
         }
       } catch (e) {
-        debugPrint('Error during pre-exit backup: $e');
+        debugPrint('Error during pre-exit shift closing/backup: $e');
         await windowManager.destroy();
       }
     }
