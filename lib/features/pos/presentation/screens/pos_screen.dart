@@ -1052,11 +1052,88 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, -3)),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // شريط معلومات الوردية والتوقيت المباشر
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0F172A),
+              border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _activeShift != null ? const Color(0xFF10B981) : Colors.amber,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _activeShift != null
+                      ? 'الوردية النشطة #${_activeShift!.id} | الكاشير: ${_activeShift!.cashierName} | رصيد الافتتاح: ${_activeShift!.countedOpeningCash.toStringAsFixed(0)} ر.ي'
+                      : 'لا توجد وردية نشطة حالياً - يرجى بدء اليومية للبيع المنظم',
+                  style: TextStyle(
+                    color: _activeShift != null ? const Color(0xFFE2E8F0) : Colors.amber.shade200,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  onTap: () => _checkAndPromptShift(forceDialog: true),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.settings_outlined, size: 13, color: Color(0xFF94A3B8)),
+                        const SizedBox(width: 4),
+                        Text(
+                          _activeShift != null ? 'إدارة الوردية / تقرير اليومية' : 'فتح وردية الآن',
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF38BDF8), fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.timer_outlined, size: 13, color: Color(0xFF38BDF8)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${OfficialDateTimeService.formatDateArabicWithDay(_currentClock)} - ${OfficialDateTimeService.formatLiveTime(_currentClock)}',
+                        style: const TextStyle(
+                          color: Color(0xFFF8FAFC),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
             // القسم 1: الربط الطبي (Doctor / Prescription)
             SizedBox(
               width: 220,
@@ -1410,6 +1487,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  ],
+),
+);
+}
 }
