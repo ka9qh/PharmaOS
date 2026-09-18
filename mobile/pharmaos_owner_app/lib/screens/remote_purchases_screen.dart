@@ -4,6 +4,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 
 class RemotePurchasesScreen extends StatefulWidget {
   const RemotePurchasesScreen({super.key});
@@ -65,12 +66,13 @@ class _RemotePurchasesScreenState extends State<RemotePurchasesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: OwnerTheme.darkBg,
+    return LuxuryBackground(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
         appBar: AppBar(
-          backgroundColor: OwnerTheme.darkCard,
+          backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
           elevation: 0,
           title: const Text('فواتير الشراء والموردين 📦'),
           actions: [
@@ -185,6 +187,7 @@ class _RemotePurchasesScreenState extends State<RemotePurchasesScreen> {
                       );
                     },
                   ),
+        ),
       ),
     );
   }

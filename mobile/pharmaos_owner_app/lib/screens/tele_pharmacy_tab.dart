@@ -134,9 +134,9 @@ class _TelePharmacyTabState extends State<TelePharmacyTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
         elevation: 0,
         title: const Text('غرفة الروشتات والاستشارات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
         actions: [

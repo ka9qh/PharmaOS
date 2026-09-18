@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 import 'main_navigation_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -70,10 +71,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: OwnerTheme.bgMeshGradient,
-          ),
+        backgroundColor: const Color(0xFF060913),
+        body: LuxuryBackground(
           child: SafeArea(
             child: Center(
               child: SingleChildScrollView(

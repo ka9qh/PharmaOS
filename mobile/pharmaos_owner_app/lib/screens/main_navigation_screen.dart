@@ -9,6 +9,7 @@ import 'remote_backup_reports_screen.dart';
 import 'tele_pharmacy_tab.dart';
 import 'settings_tab.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -36,18 +37,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        body: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
+        backgroundColor: const Color(0xFF060913),
+        body: LuxuryBackground(
+          child: IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
         ),
         bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: OwnerTheme.darkCard,
-            border: Border(top: BorderSide(color: OwnerTheme.surfaceBorder, width: 1)),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0C1322).withValues(alpha: 0.95),
+            border: const Border(top: BorderSide(color: Color(0xFF1E293B), width: 1)),
           ),
           child: NavigationBar(
-            backgroundColor: OwnerTheme.darkCard,
-            indicatorColor: OwnerTheme.primaryEmerald.withOpacity(0.35),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            indicatorColor: OwnerTheme.primaryEmerald.withValues(alpha: 0.25),
             selectedIndex: _currentIndex,
             onDestinationSelected: (index) => setState(() => _currentIndex = index),
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,

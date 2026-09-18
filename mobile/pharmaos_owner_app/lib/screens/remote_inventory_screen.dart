@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 
 class RemoteInventoryScreen extends StatefulWidget {
   const RemoteInventoryScreen({super.key});
@@ -241,14 +242,15 @@ class _RemoteInventoryScreenState extends State<RemoteInventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: OwnerTheme.darkBg,
-        appBar: AppBar(
-          backgroundColor: OwnerTheme.darkCard,
-          elevation: 0,
-          title: const Text('المخزون والأسعار الحية 📊'),
+    return LuxuryBackground(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
+            elevation: 0,
+            title: const Text('المخزون والأسعار الحية 📊'),
           actions: [
             IconButton(
               tooltip: _isGridView ? 'عرض البطاقات' : 'عرض جدول Excel',
@@ -336,8 +338,9 @@ class _RemoteInventoryScreenState extends State<RemoteInventoryScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildExcelTableView() {
     return SingleChildScrollView(

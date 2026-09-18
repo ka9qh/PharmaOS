@@ -4,6 +4,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 
 class RemoteBackupReportsScreen extends StatefulWidget {
   const RemoteBackupReportsScreen({super.key});
@@ -136,137 +137,139 @@ class _RemoteBackupReportsScreenState extends State<RemoteBackupReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: OwnerTheme.darkBg,
-        appBar: AppBar(
-          backgroundColor: OwnerTheme.darkCard,
-          elevation: 0,
-          title: const Text('النسخ الاحتياطي والتقارير الحية 📑'),
-          actions: [
-            IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
-          ],
-        ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: OwnerTheme.primaryEmeraldLight))
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // بطاقة طلب النسخ الاحتياطي الفوري
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: OwnerTheme.emeraldGradient,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: OwnerTheme.primaryEmerald.withOpacity(0.3),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.shield_rounded, color: Colors.white, size: 24),
-                              SizedBox(width: 8),
-                              Text(
-                                'النسخ الاحتياطي الثلاثي الفوري',
-                                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'إصدار أمر فوري للنظام لإنشاء وتأمين نسخة كاملة مشفرة لكافة الحسابات والمبيعات والمخزون ورفعها مباشرة.',
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0F172A),
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: _isTriggeringBackup ? null : _handleRemoteBackup,
-                              child: _isTriggeringBackup
-                                  ? const CircularProgressIndicator(color: Colors.white)
-                                  : const Text('إصدار أمر النسخ الاحتياطي الآن ⚡', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // التقارير المالية وإغلاقات الصناديق الحية
-                    const Text('تقارير الإغلاقات اليومية Z-Reports:', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    if (_closings.isEmpty)
+    return LuxuryBackground(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
+            elevation: 0,
+            title: const Text('النسخ الاحتياطي والتقارير الحية 📑'),
+            actions: [
+              IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
+            ],
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: OwnerTheme.primaryEmeraldLight))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // بطاقة طلب النسخ الاحتياطي الفوري
                       Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: OwnerTheme.glassCardDecoration(),
-                        child: const Center(
-                          child: Text('لا توجد تقارير إغلاق يومية محفوظة بعد', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: OwnerTheme.emeraldGradient,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: OwnerTheme.primaryEmerald.withOpacity(0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
-                      )
-                    else
-                      ..._closings.map((c) {
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.shield_rounded, color: Colors.white, size: 24),
+                                SizedBox(width: 8),
+                                Text(
+                                  'النسخ الاحتياطي الثلاثي الفوري',
+                                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'إصدار أمر فوري للنظام لإنشاء وتأمين نسخة كاملة مشفرة لكافة الحسابات والمبيعات والمخزون ورفعها مباشرة.',
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: _isTriggeringBackup ? null : _handleRemoteBackup,
+                                child: _isTriggeringBackup
+                                    ? const CircularProgressIndicator(color: Colors.white)
+                                    : const Text('إصدار أمر النسخ الاحتياطي الآن ⚡', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // التقارير المالية وإغلاقات الصناديق الحية
+                      const Text('تقارير الإغلاقات اليومية Z-Reports:', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      if (_closings.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: OwnerTheme.glassCardDecoration(),
+                          child: const Center(
+                            child: Text('لا توجد تقارير إغلاق يومية محفوظة بعد', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          ),
+                        )
+                      else
+                        ..._closings.map((c) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            decoration: OwnerTheme.glassCardDecoration(),
+                            child: ListTile(
+                              onTap: () => _showClosingDetails(c),
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: OwnerTheme.accentGold.withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.assessment_rounded, color: OwnerTheme.accentGoldLight, size: 20),
+                              ),
+                              title: Text(
+                                'إغلاق يوم ${DateFormat('yyyy-MM-dd').format(c.date)}',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              subtitle: Text('المبيعات: ${c.totalSales.toStringAsFixed(0)} ر.ي | صافي الربح: ${c.netProfit.toStringAsFixed(0)} ر.ي', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
+                              trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+                            ),
+                          );
+                        }),
+
+                      const SizedBox(height: 24),
+
+                      // سجل النسخ الاحتياطية
+                      const Text('سجل النسخ الاحتياطية السحابية:', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      ..._backups.map((b) {
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           decoration: OwnerTheme.glassCardDecoration(),
                           child: ListTile(
-                            onTap: () => _showClosingDetails(c),
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: OwnerTheme.accentGold.withOpacity(0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.assessment_rounded, color: OwnerTheme.accentGoldLight, size: 20),
+                            leading: const Icon(Icons.cloud_done_rounded, color: OwnerTheme.primaryEmeraldLight),
+                            title: Text(b.fileName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                            subtitle: Text('${b.summaryText} (${(b.fileSize / 1024 / 1024).toStringAsFixed(2)} MB)', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                            trailing: Text(
+                              DateFormat('MM/dd HH:mm').format(b.createdAt),
+                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
                             ),
-                            title: Text(
-                              'إغلاق يوم ${DateFormat('yyyy-MM-dd').format(c.date)}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            subtitle: Text('المبيعات: ${c.totalSales.toStringAsFixed(0)} ر.ي | صافي الربح: ${c.netProfit.toStringAsFixed(0)} ر.ي', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
-                            trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
                           ),
                         );
                       }),
-
-                    const SizedBox(height: 24),
-
-                    // سجل النسخ الاحتياطية
-                    const Text('سجل النسخ الاحتياطية السحابية:', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    ..._backups.map((b) {
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: OwnerTheme.glassCardDecoration(),
-                        child: ListTile(
-                          leading: const Icon(Icons.cloud_done_rounded, color: OwnerTheme.primaryEmeraldLight),
-                          title: Text(b.fileName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                          subtitle: Text('${b.summaryText} (${(b.fileSize / 1024 / 1024).toStringAsFixed(2)} MB)', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
-                          trailing: Text(
-                            DateFormat('MM/dd HH:mm').format(b.createdAt),
-                            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }

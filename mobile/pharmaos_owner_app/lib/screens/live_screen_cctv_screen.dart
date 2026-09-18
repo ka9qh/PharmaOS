@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 
 class LiveScreenCctvScreen extends StatefulWidget {
   const LiveScreenCctvScreen({super.key});
@@ -100,12 +101,13 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen> with Single
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: OwnerTheme.darkBg,
+    return LuxuryBackground(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
         appBar: AppBar(
-          backgroundColor: OwnerTheme.darkCard,
+          backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
           elevation: 0,
           title: const Text('المراقبة والبث المباشر الحي 📡'),
           actions: [
@@ -227,8 +229,9 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen> with Single
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStreamView({
     required String title,

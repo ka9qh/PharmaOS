@@ -44,9 +44,9 @@ class _MedicinesTabState extends State<MedicinesTab> {
     final currencyFormat = NumberFormat('#,##0', 'ar');
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
         elevation: 0,
         title: const Text('دليل الأدوية والأسعار', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
       ),

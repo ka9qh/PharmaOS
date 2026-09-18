@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
+import '../widgets/luxury_background.dart';
 
 class LiveChatScreen extends StatefulWidget {
   const LiveChatScreen({super.key});
@@ -128,12 +129,13 @@ class _LiveChatScreenState extends State<LiveChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: OwnerTheme.darkBg,
+    return LuxuryBackground(
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
         appBar: AppBar(
-          backgroundColor: OwnerTheme.darkCard,
+          backgroundColor: const Color(0xFF0C1322).withValues(alpha: 0.85),
           elevation: 0,
           title: Row(
             children: [
@@ -334,6 +336,7 @@ class _LiveChatScreenState extends State<LiveChatScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
