@@ -1,0 +1,18 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Run every 3 days at midnight
+    - cron: '0 0 */3 * *'
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -s -X GET 'https://bwgilcmzffcwdcxhfyfk.supabase.co/rest/v1/cloud_medicines?limit=1' \
+          -H 'apikey: sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16' \
+          -H 'Authorization: Bearer sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16'
+          echo "Supabase pinged successfully to prevent auto-pause."
