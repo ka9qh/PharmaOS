@@ -54,9 +54,11 @@ class OwnerApiService {
       };
 
   /// تسجيل الدخول عبر رمز التفعيل الشامل للصيدلية
-  static Future<OwnerTenantConfig?> loginWithActivationKey(String rawKey) async {
+  static Future<OwnerTenantConfig> loginWithActivationKey(String rawKey) async {
     final key = rawKey.trim();
-    if (key.isEmpty) return null;
+    if (key.isEmpty) {
+      throw Exception('يرجى إدخال رمز تفعيل صحيح');
+    }
 
     final defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
     final defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
@@ -85,25 +87,19 @@ class OwnerApiService {
 
           await saveConfig(config);
           return config;
+        } else {
+           throw Exception('رمز التفعيل غير موجود في قاعدة البيانات ولم يتم ربطه بصيدلية');
         }
+      } else {
+         throw Exception('حدث خطأ أثناء الاتصال بالخادم السحابي');
       }
     } catch (e) {
+      if (e is Exception && e.toString().contains('رمز التفعيل')) {
+        rethrow;
+      }
       debugPrint('loginWithActivationKey online search error: $e');
+      throw Exception('لا يوجد اتصال بالإنترنت أو الخادم السحابي غير متوفر');
     }
-
-    // وضع التوافق الأوفلاين السريع
-    final fallbackName = key.contains('#') ? key.split('#').first.replaceAll('_', ' ') : 'صيدليتي المعتمدة';
-    final config = OwnerTenantConfig(
-      pharmacyId: 1,
-      pharmacyName: fallbackName.isNotEmpty ? fallbackName : 'صيدلية PharmaOS الرئيسية',
-      licenseKey: key,
-      managerName: 'المدير العام',
-      supabaseUrl: defaultUrl,
-      supabaseKey: defaultKey,
-      branches: ['الفرع الرئيسي', 'الفرع الإضافي 1'],
-    );
-    await saveConfig(config);
-    return config;
   }
 
   /// إرسال أمر عن بعد للنظام المكتبي

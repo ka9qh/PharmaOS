@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
 import '../widgets/luxury_background.dart';
+import 'dart:async';
 
 class RemotePurchasesScreen extends StatefulWidget {
   const RemotePurchasesScreen({super.key});
@@ -19,14 +20,25 @@ class _RemotePurchasesScreenState extends State<RemotePurchasesScreen> {
   List<CloudMedicine> _medicines = [];
   bool _isLoading = true;
 
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _loadData(silent: true);
+    });
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final invs = await OwnerApiService.fetchPurchasesHistory();
     final sups = await OwnerApiService.fetchSuppliers();
     final meds = await OwnerApiService.fetchMedicinesCatalog();

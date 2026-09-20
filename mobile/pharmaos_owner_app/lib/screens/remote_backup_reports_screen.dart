@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
 import '../widgets/luxury_background.dart';
+import 'dart:async';
 
 class RemoteBackupReportsScreen extends StatefulWidget {
   const RemoteBackupReportsScreen({super.key});
@@ -18,15 +19,25 @@ class _RemoteBackupReportsScreenState extends State<RemoteBackupReportsScreen> {
   List<CloudBackupRecord> _backups = [];
   List<CloudDayClosing> _closings = [];
   bool _isLoading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _loadData(silent: true);
+    });
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final bks = await OwnerApiService.fetchBackupsHistory();
     final cls = await OwnerApiService.fetchDayClosings();
     if (mounted) {

@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
 import '../widgets/luxury_background.dart';
+import 'dart:async';
 
 class RemoteInventoryScreen extends StatefulWidget {
   const RemoteInventoryScreen({super.key});
@@ -18,15 +19,28 @@ class _RemoteInventoryScreenState extends State<RemoteInventoryScreen> {
   List<CloudMedicine> _filteredMedicines = [];
   bool _isLoading = true;
   bool _isGridView = true; // نمط الجدول الشامل Excel vs بطاقات
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadMedicines();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && _searchController.text.trim().isEmpty) {
+        _loadMedicines(silent: true);
+      }
+    });
   }
 
-  Future<void> _loadMedicines() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadMedicines({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final list = await OwnerApiService.fetchMedicinesCatalog();
     if (mounted) {
       setState(() {

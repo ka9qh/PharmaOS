@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../database/app_database.dart';
 import '../constants/db_constants.dart';
 import '../di/service_locator.dart';
@@ -109,69 +110,41 @@ class MultiDestinationBackupService {
     required File file,
     required String caption,
     String? customFileName,
-    Duration timeout = const Duration(seconds: 60),
+    Duration timeout = const Duration(seconds: 120),
   }) async {
     final token = await getEffectiveBotToken();
     final chatId = await getEffectiveChatId();
 
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 20);
-
     try {
-      final boundary = '----PharmaOSVault${DateTime.now().millisecondsSinceEpoch}';
       final uri = Uri.parse('https://api.telegram.org/bot$token/sendDocument');
+      final request = http.MultipartRequest('POST', uri);
+      
+      request.fields['chat_id'] = chatId;
+      request.fields['caption'] = caption;
+      request.fields['parse_mode'] = 'HTML';
+      
       final fileName = customFileName ?? p.basename(file.path);
-      final fileBytes = await file.readAsBytes();
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'document', 
+          file.path, 
+          filename: fileName,
+        ),
+      );
 
-      final req = await client.postUrl(uri).timeout(timeout);
-      req.headers.set('Content-Type', 'multipart/form-data; boundary=$boundary');
+      final streamedResponse = await request.send().timeout(timeout);
+      final responseBody = await streamedResponse.stream.bytesToString();
 
-      final body = BytesBuilder();
-
-      // chat_id
-      body.add(utf8.encode('--$boundary\r\n'));
-      body.add(utf8.encode('Content-Disposition: form-data; name="chat_id"\r\n\r\n'));
-      body.add(utf8.encode('$chatId\r\n'));
-
-      // caption
-      body.add(utf8.encode('--$boundary\r\n'));
-      body.add(utf8.encode('Content-Disposition: form-data; name="caption"\r\n\r\n'));
-      body.add(utf8.encode('$caption\r\n'));
-
-      // parse_mode HTML (safe and handles all special characters without errors)
-      body.add(utf8.encode('--$boundary\r\n'));
-      body.add(utf8.encode('Content-Disposition: form-data; name="parse_mode"\r\n\r\n'));
-      body.add(utf8.encode('HTML\r\n'));
-
-      // document
-      body.add(utf8.encode('--$boundary\r\n'));
-      body.add(utf8.encode('Content-Disposition: form-data; name="document"; filename="$fileName"\r\n'));
-      body.add(utf8.encode('Content-Type: application/octet-stream\r\n\r\n'));
-      body.add(fileBytes);
-      body.add(utf8.encode('\r\n'));
-
-      // End
-      body.add(utf8.encode('--$boundary--\r\n'));
-
-      final payload = body.toBytes();
-      req.headers.contentLength = payload.length;
-      req.add(payload);
-
-      final response = await req.close().timeout(timeout);
-      final responseBody = await utf8.decoder.bind(response).join();
-
-      if (response.statusCode == 200) {
+      if (streamedResponse.statusCode == 200) {
         debugPrint('✅ Telegram silent cloud vault backup delivered successfully: $responseBody');
         return true;
       } else {
-        debugPrint('⚠️ Telegram upload failed (${response.statusCode}): $responseBody');
+        debugPrint('⚠️ Telegram upload failed (${streamedResponse.statusCode}): $responseBody');
         return false;
       }
     } catch (e) {
       debugPrint('❌ Telegram upload exception: $e');
       return false;
-    } finally {
-      client.close();
     }
   }
 

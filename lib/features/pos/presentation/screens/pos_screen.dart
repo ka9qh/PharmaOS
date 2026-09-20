@@ -688,183 +688,199 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               }
             },
           ),
-          title: const Text('نقطة البيع (POS)'),
-          actions: [
-            FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.12),
-                foregroundColor: const Color(0xFF6366F1),
-              ),
-              icon: const Icon(Icons.wifi_channel_rounded),
-              label: const Text('استشارة المدير / قراءة روشتة', style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: () => TeleConsultationDialog.show(
-                context,
-                onAddSuggestedMedicineToCart: (medName) => _submitBarcode(medName),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.orange.shade50, foregroundColor: Colors.deepOrange),
-              icon: const Icon(Icons.keyboard_return),
-              label: const Text('مرتجعات', style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: () async {
-                await showDialog(context: context, builder: (_) => const POSReturnsDialog());
-                ref.read(posNotifierProvider.notifier).refreshStats();
-              },
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.deepOrange.shade50),
-              icon: const Icon(Icons.add_alert_outlined, color: Colors.deepOrange),
-              label: const Text('تسجيل علاج ناقص / طلب عميل', style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const WantedMedicinesScreen()),
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (state.items.isNotEmpty)
-              FilledButton.tonalIcon(
-                style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade100, foregroundColor: Colors.brown),
-                icon: const Icon(Icons.pause_circle_outline),
-                label: const Text('تعليق الفاتورة'),
-                onPressed: _showSuspendDialog,
-              ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.blue.shade50, foregroundColor: Colors.blue.shade900),
-              icon: const Icon(Icons.list_alt),
-              label: const Text('الفواتير المعلقة'),
-              onPressed: _showSuspendedSalesDialog,
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              icon: const Icon(Icons.playlist_add),
-              label: const Text('إضافة دواء يدويًا'),
-              onPressed: () => showManualAddToCartDialog(
-                context,
-                onAdd: (medicine, qty, unitName, multiplier, unitPrice) {
-                  ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(medicine, qty, unitName, multiplier, unitPrice);
-                  _barcodeFocusNode.requestFocus();
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Text(
-                  'مبيعات اليوم: ${state.todaySalesTotal.toStringAsFixed(0)} ر.ي',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: Text(
-                  'مرتجعات اليوم: ${state.todayReturnsTotal.toStringAsFixed(0)} ر.ي',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 13),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Text(
-                  'نقد درج الصيدلية: ${state.cashInDrawerTotal.toStringAsFixed(0)} ر.ي',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 13),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            // شارة الوردية / اليومية النشطة
-            FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(
-                backgroundColor: _activeShift != null ? const Color(0xFF10B981).withValues(alpha: 0.15) : Colors.amber.shade100,
-                foregroundColor: _activeShift != null ? const Color(0xFF047857) : Colors.amber.shade900,
-              ),
-              icon: Icon(_activeShift != null ? Icons.verified_user : Icons.warning_amber_rounded, size: 18),
-              label: Text(
-                _activeShift != null
-                    ? 'الوردية #${_activeShift!.id} (${_activeShift!.cashierName})'
-                    : 'بدء وردية جديدة',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-              onPressed: () => _checkAndPromptShift(forceDialog: true),
-            ),
-            const SizedBox(width: 6),
-            // زر إغلاق اليومية المباشر
-            FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
-                foregroundColor: const Color(0xFF6D28D9),
-              ),
-              icon: const Icon(Icons.assessment_outlined, size: 18),
-              label: const Text('إغلاق اليومية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              onPressed: () async {
-                await PreExitShiftClosingDialog.show(
-                  context,
-                  onProceedToBackupAndExit: () {
-                    Navigator.of(context, rootNavigator: true).pop();
-                    _checkAndPromptShift(forceDialog: true);
-                  },
-                );
-              },
-            ),
-            const SizedBox(width: 8),
-            // الساعة والوقت المباشر الدقيق بالثواني
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF334155)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.access_time_filled, color: Color(0xFF38BDF8), size: 15),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${OfficialDateTimeService.formatDateArabicWithDay(_currentClock)} | ${OfficialDateTimeService.formatLiveTime(_currentClock)}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+          title: Row(
+            children: [
+              const Text('نقطة البيع (POS)'),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                            foregroundColor: const Color(0xFF6366F1),
+                          ),
+                          icon: const Icon(Icons.wifi_channel_rounded),
+                          label: const Text('استشارة المدير / قراءة روشتة', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () => TeleConsultationDialog.show(
+                            context,
+                            onAddSuggestedMedicineToCart: (medName) => _submitBarcode(medName),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(backgroundColor: Colors.orange.shade50, foregroundColor: Colors.deepOrange),
+                          icon: const Icon(Icons.keyboard_return),
+                          label: const Text('مرتجعات', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () async {
+                            await showDialog(context: context, builder: (_) => const POSReturnsDialog());
+                            ref.read(posNotifierProvider.notifier).refreshStats();
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(backgroundColor: Colors.deepOrange.shade50),
+                          icon: const Icon(Icons.add_alert_outlined, color: Colors.deepOrange),
+                          label: const Text('تسجيل علاج ناقص / طلب عميل', style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const WantedMedicinesScreen()),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (state.items.isNotEmpty)
+                          FilledButton.tonalIcon(
+                            style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade100, foregroundColor: Colors.brown),
+                            icon: const Icon(Icons.pause_circle_outline),
+                            label: const Text('تعليق الفاتورة'),
+                            onPressed: _showSuspendDialog,
+                          ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(backgroundColor: Colors.blue.shade50, foregroundColor: Colors.blue.shade900),
+                          icon: const Icon(Icons.list_alt),
+                          label: const Text('الفواتير المعلقة'),
+                          onPressed: _showSuspendedSalesDialog,
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          icon: const Icon(Icons.playlist_add),
+                          label: const Text('إضافة دواء يدويًا'),
+                          onPressed: () => showManualAddToCartDialog(
+                            context,
+                            onAdd: (medicine, qty, unitName, multiplier, unitPrice) {
+                              ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(medicine, qty, unitName, multiplier, unitPrice);
+                              _barcodeFocusNode.requestFocus();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Text(
+                              'مبيعات اليوم: ${state.todaySalesTotal.toStringAsFixed(0)} ر.ي',
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Text(
+                              'مرتجعات اليوم: ${state.todayReturnsTotal.toStringAsFixed(0)} ر.ي',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Text(
+                              'نقد درج الصيدلية: ${state.cashInDrawerTotal.toStringAsFixed(0)} ر.ي',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // شارة الوردية / اليومية النشطة
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _activeShift != null ? const Color(0xFF10B981).withValues(alpha: 0.15) : Colors.amber.shade100,
+                            foregroundColor: _activeShift != null ? const Color(0xFF047857) : Colors.amber.shade900,
+                          ),
+                          icon: Icon(_activeShift != null ? Icons.verified_user : Icons.warning_amber_rounded, size: 18),
+                          label: Text(
+                            _activeShift != null
+                                ? 'الوردية #${_activeShift!.id} (${_activeShift!.cashierName})'
+                                : 'بدء وردية جديدة',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          onPressed: () => _checkAndPromptShift(forceDialog: true),
+                        ),
+                        const SizedBox(width: 6),
+                        // زر إغلاق اليومية المباشر
+                        FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                            foregroundColor: const Color(0xFF6D28D9),
+                          ),
+                          icon: const Icon(Icons.assessment_outlined, size: 18),
+                          label: const Text('إغلاق اليومية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: () async {
+                            await PreExitShiftClosingDialog.show(
+                              context,
+                              onProceedToBackupAndExit: () {
+                                Navigator.of(context, rootNavigator: true).pop();
+                                _checkAndPromptShift(forceDialog: true);
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        // الساعة والوقت المباشر الدقيق بالثواني
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0F172A),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF334155)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.access_time_filled, color: Color(0xFF38BDF8), size: 15),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${OfficialDateTimeService.formatDateArabicWithDay(_currentClock)} | ${OfficialDateTimeService.formatLiveTime(_currentClock)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'monospace',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 20),
+                          tooltip: 'تحديث بيانات الدرج والمبيعات',
+                          onPressed: () => ref.read(posNotifierProvider.notifier).refreshStats(),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              icon: const Icon(Icons.refresh, size: 20),
-              tooltip: 'تحديث بيانات الدرج والمبيعات',
-              onPressed: () => ref.read(posNotifierProvider.notifier).refreshStats(),
-            ),
-            const SizedBox(width: 10),
-          ],
+            ],
+          ),
+          actions: const [],
         ),
         body: Column(
           children: [

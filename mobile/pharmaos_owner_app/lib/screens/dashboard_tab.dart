@@ -1,4 +1,5 @@
 // تبويب لوحة المبيعات والرقابة المالية اللحظية - PharmaOS Owner App
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
@@ -22,12 +23,23 @@ class _DashboardTabState extends State<DashboardTab> {
   double _cashInDrawer = 0;
   int _todayInvoicesCount = 0;
   OwnerAppUpdateInfo? _availableUpdate;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadData();
     _checkUpdates();
+    // تحديث تلقائي كل 10 ثوانٍ (Reactivity)
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _loadData(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkUpdates() async {
@@ -37,35 +49,39 @@ class _DashboardTabState extends State<DashboardTab> {
     }
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final config = await OwnerApiService.getConfig();
-    final sales = await OwnerApiService.fetchSales(limit: 50);
-    final closings = await OwnerApiService.fetchDayClosings(limit: 15);
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
+    try {
+      final config = await OwnerApiService.getConfig();
+      final sales = await OwnerApiService.fetchSales(limit: 50);
+      final closings = await OwnerApiService.fetchDayClosings(limit: 15);
 
-    double total = 0;
-    int count = 0;
-    final now = DateTime.now();
+      double total = 0;
+      int count = 0;
+      final now = DateTime.now();
 
-    for (var s in sales) {
-      if (s.createdAt.year == now.year && s.createdAt.month == now.month && s.createdAt.day == now.day) {
-        total += s.netAmount;
-        count++;
+      for (var s in sales) {
+        if (s.createdAt.year == now.year && s.createdAt.month == now.month && s.createdAt.day == now.day) {
+          total += s.netAmount;
+          count++;
+        }
       }
-    }
 
-    double drawer = closings.isNotEmpty ? closings.first.cashInDrawer : (total * 0.85);
+      double drawer = closings.isNotEmpty ? closings.first.cashInDrawer : (total * 0.85);
 
-    if (mounted) {
-      setState(() {
-        _config = config;
-        _sales = sales;
-        _closings = closings;
-        _todaySales = total;
-        _todayInvoicesCount = count;
-        _cashInDrawer = drawer;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _config = config;
+          _sales = sales;
+          _closings = closings;
+          _todaySales = total;
+          _todayInvoicesCount = count;
+          _cashInDrawer = drawer;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

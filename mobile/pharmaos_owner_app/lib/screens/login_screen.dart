@@ -46,17 +46,22 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
-    final config = await OwnerApiService.loginWithActivationKey(key);
+    try {
+      final config = await OwnerApiService.loginWithActivationKey(key);
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      if (config != null) {
+      if (mounted) {
+        setState(() => _isLoading = false);
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
         );
-      } else {
-        setState(() => _errorMessage = 'تعذر التعرف على رمز التفعيل، تأكد من صحة الرمز');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        });
       }
     }
   }
