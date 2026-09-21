@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <title>PharmaOS Admin - لوحة تحكم المطوّر</title>
+    <!-- Tailwind CSS for fast styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SweetAlert for nice alerts -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Tajawal', sans-serif; background-color: #f3f4f6; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-blue-700 text-white shadow-md py-4 px-6 flex justify-between items-center">
+            <div class="flex items-center space-x-4 space-x-reverse">
+                <h1 class="text-2xl font-bold">PharmaOS - مركز الإدارة</h1>
+            </div>
+            <div>
+                <span id="statusIndicator" class="px-3 py-1 bg-gray-500 rounded-full text-sm">جاري الاتصال...</span>
+            </div>
+        </header>
+
+        <main class="flex-grow p-6 flex gap-6">
+            <!-- Sidebar / Stats -->
+            <aside class="w-1/4 flex flex-col gap-6">
+                <!-- Add New Pharmacy -->
+                <div class="glass-panel p-6 rounded-xl">
+                    <h2 class="text-xl font-bold mb-4 border-b pb-2">تسجيل صيدلية جديدة</h2>
+                    <form id="newPharmacyForm" class="flex flex-col gap-3">
+                        <input type="text" id="pharmacyName" placeholder="اسم الصيدلية" class="p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none" required>
+                        
+                        <label class="text-sm font-bold text-gray-700">نوع الرخصة</label>
+                        <select id="licenseType" class="p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="single">صيدلية فردية</option>
+                            <option value="multi">لها فروع</option>
+                        </select>
+                        
+                        <label class="text-sm font-bold text-gray-700">نوع الاشتراك</label>
+                        <select id="subType" class="p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="monthly">شهري</option>
+                            <option value="yearly">سنوي</option>
+                            <option value="lifetime">مدى الحياة</option>
+                        </select>
+                        
+                        <label class="text-sm font-bold text-gray-700">معرف الجهاز (اختياري)</label>
+                        <input type="text" id="deviceFingerprint" placeholder="معرف جهاز الإدارة" class="p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                        
+                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white py-2 mt-2 rounded font-bold transition">إصدار رخصة وتفعيل</button>
+                    </form>
+                </div>
+
+                <!-- Stats -->
+                <div class="glass-panel p-6 rounded-xl">
+                    <h2 class="text-xl font-bold mb-4 border-b pb-2">إحصائيات النظام</h2>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex justify-between"><span>إجمالي الصيدليات:</span> <span id="totalPharmacies" class="font-bold">0</span></div>
+                        <div class="flex justify-between"><span>النشطة:</span> <span id="activePharmacies" class="text-green-600 font-bold">0</span></div>
+                        <div class="flex justify-between"><span>المعلقة:</span> <span id="pausedPharmacies" class="text-yellow-600 font-bold">0</span></div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <section class="w-3/4 glass-panel p-6 rounded-xl flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold">إدارة الرخص والصيدليات المشتركة</h2>
+                    <button onclick="loadTenants()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow flex items-center gap-2">
+                        <span>تحديث البيانات</span>
+                    </button>
+                </div>
+                
+                <div class="overflow-auto bg-white rounded-lg shadow">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">اسم الصيدلية</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">كود التفعيل (الرخصة)</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">نوع الرخصة</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tenantsTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows injected via JS -->
+                            <tr><td colspan="6" class="text-center py-4 text-gray-500">جاري تحميل البيانات...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Configuration Script -->
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
