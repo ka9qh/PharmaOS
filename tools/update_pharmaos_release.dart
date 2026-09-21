@@ -68,7 +68,24 @@ void main() async {
       print('✅ Copied Android Owner APK from releases');
     }
 
-    // 4. Create clean batch launcher
+    // 4. Copy Super Admin Windows App if present
+    final superAdminSource = Directory('C:\\pharmasy\\pharmaos_super_admin\\build\\windows\\x64\\runner\\Release');
+    if (await superAdminSource.exists()) {
+      final superAdminTarget = Directory(p.join(targetDir.path, 'لوحة_تحكم_المطور_SuperAdmin'));
+      if (await superAdminTarget.exists()) await superAdminTarget.delete(recursive: true);
+      await _copyDirectory(superAdminSource, superAdminTarget);
+      
+      final adminLauncher = File(p.join(targetDir.path, 'تشغيل_لوحة_تحكم_المطور_SuperAdmin.bat'));
+      await adminLauncher.writeAsString('''@echo off
+chcp 65001 > nul
+title PharmaOS Super Admin - مركز التحكم بالمطور
+start "" "%~dp0لوحة_تحكم_المطور_SuperAdmin\\pharmaos_super_admin.exe"
+exit
+''', mode: FileMode.write);
+      print('✅ Copied Super Admin Windows app & created launcher');
+    }
+
+    // 5. Create clean batch launcher
     final batFile = File(p.join(targetDir.path, 'تشغيل_نظام_الصيدلية.bat'));
     await batFile.writeAsString('''@echo off
 chcp 65001 > nul
