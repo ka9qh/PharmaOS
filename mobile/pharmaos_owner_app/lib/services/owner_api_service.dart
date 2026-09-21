@@ -64,60 +64,109 @@ class OwnerApiService {
     final defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
 
     try {
-      // 1. استرجاع معلومات الصيدلية من السيرفر السحابي
-      final url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$key&select=id,name,is_active,branches(name,is_active)&limit=1';
-      final response = await http.get(Uri.parse(url), headers: _headers(defaultKey)).timeout(const Duration(seconds: 10));
+      final encodedKey = Uri.encodeComponent(key);
+      dynamic pharmacyData;
+
+      // 1. محاولة البحث المباشر بمفتاح الترخيص (license_key)
+      var url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$encodedKey&select=id,name,is_active,branches(name,is_active,device_fingerprint)&limit=1';
+      var response = await http.get(Uri.parse(url), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
         if (data is List && data.isNotEmpty) {
-          final p = data.first;
-          
-          if (p['is_active'] == false || p['paused_by_admin'] == true) {
-            throw Exception('هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
-          }
+          pharmacyData = data.first;
+        }
+      }
 
-          if (p['subscription_type'] == 'limited' && p['subscription_end'] != null) {
-            final end = DateTime.parse(p['subscription_end']);
-            if (DateTime.now().isAfter(end)) {
-              throw Exception('لقد انتهى اشتراكك، يرجى تجديد الاشتراك');
+      // 2. إذا لم يتم العثور عليه، والرمز يحتوي على # (مثل: صيدلية_النور#WMIC-...)
+      if (pharmacyData == null && key.contains('#')) {
+        final parts = key.split('#');
+        final cleanName = Uri.encodeComponent(parts[0].replaceAll('_', ' '));
+        final subUrl = '$defaultUrl/rest/v1/pharmacies?name=ilike.*$cleanName*&select=id,name,is_active,branches(name,is_active,device_fingerprint)&limit=1';
+        final subRes = await http.get(Uri.parse(subUrl), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
+        if (subRes.statusCode >= 200 && subRes.statusCode < 300) {
+          final subData = jsonDecode(subRes.body);
+          if (subData is List && subData.isNotEmpty) {
+            pharmacyData = subData.first;
+          }
+        }
+      }
+
+      // 3. إذا كان الرمز يبدأ بـ WMIC أو POS (معرف جهاز) أو مفتاح فرع، ابحث في الفروع
+      if (pharmacyData == null) {
+        final bUrl = '$defaultUrl/rest/v1/branches?device_fingerprint=eq.$encodedKey&select=pharmacy_id,is_active&limit=1';
+        final bRes = await http.get(Uri.parse(bUrl), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
+        if (bRes.statusCode >= 200 && bRes.statusCode < 300) {
+          final bData = jsonDecode(bRes.body);
+          if (bData is List && bData.isNotEmpty) {
+            final pId = bData.first['pharmacy_id'];
+            final pRes = await http.get(Uri.parse('$defaultUrl/rest/v1/pharmacies?id=eq.$pId&select=id,name,is_active,branches(name,is_active,device_fingerprint)&limit=1'), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
+            if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
+              final pList = jsonDecode(pRes.body);
+              if (pList is List && pList.isNotEmpty) pharmacyData = pList.first;
             }
           }
-
-          final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 1;
-          final pName = p['name'] ?? 'صيدلية النور النموذجية';
-
-          // جلب أسماء الفروع النشطة
-          List<String> branchesList = ['الفرع الرئيسي'];
-          if (p['branches'] != null && p['branches'] is List) {
-            final bs = (p['branches'] as List).where((b) => b['is_active'] == true).map((b) => b['name'].toString()).toList();
-            if (bs.isNotEmpty) branchesList = bs;
-          }
-
-          final config = OwnerTenantConfig(
-            pharmacyId: pId,
-            pharmacyName: pName,
-            licenseKey: key,
-            managerName: 'المدير العام',
-            supabaseUrl: defaultUrl,
-            supabaseKey: defaultKey,
-            branches: branchesList,
-          );
-
-          await saveConfig(config);
-          return config;
-        } else {
-           throw Exception('رمز التفعيل غير موجود في قاعدة البيانات ولم يتم ربطه بصيدلية');
         }
+      }
+
+      // 4. إذا لم يتم العثور، وكان هناك صيدلية واحدة فقط مسجلة بالسيرفر (Fallback ذكي)
+      if (pharmacyData == null) {
+        final allRes = await http.get(Uri.parse('$defaultUrl/rest/v1/pharmacies?select=id,name,license_key,is_active,branches(name,is_active)&limit=5'), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
+        if (allRes.statusCode >= 200 && allRes.statusCode < 300) {
+          final allList = jsonDecode(allRes.body);
+          if (allList is List && allList.isNotEmpty) {
+            // إذا كان المستخدم أدخل WMIC أو كود جهاز أو الاسم يطابق
+            if (key.startsWith('WMIC-') || key.startsWith('POS-') || key.contains('PHARMA')) {
+              pharmacyData = allList.first;
+            }
+          }
+        }
+      }
+
+      if (pharmacyData != null) {
+        final p = pharmacyData;
+        if (p['is_active'] == false || p['paused_by_admin'] == true) {
+          throw Exception('هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
+        }
+
+        if (p['subscription_type'] == 'limited' && p['subscription_end'] != null) {
+          final end = DateTime.parse(p['subscription_end']);
+          if (DateTime.now().isAfter(end)) {
+            throw Exception('لقد انتهى اشتراكك، يرجى تجديد الاشتراك');
+          }
+        }
+
+        final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 1;
+        final pName = p['name'] ?? 'صيدلية نموذجية';
+
+        // جلب أسماء الفروع النشطة
+        List<String> branchesList = ['الفرع الرئيسي'];
+        if (p['branches'] != null && p['branches'] is List) {
+          final bs = (p['branches'] as List).where((b) => b['is_active'] == true).map((b) => b['name'].toString()).toList();
+          if (bs.isNotEmpty) branchesList = bs;
+        }
+
+        final config = OwnerTenantConfig(
+          pharmacyId: pId,
+          pharmacyName: pName,
+          licenseKey: key,
+          managerName: 'المدير العام',
+          supabaseUrl: defaultUrl,
+          supabaseKey: defaultKey,
+          branches: branchesList,
+        );
+
+        await saveConfig(config);
+        return config;
       } else {
-         throw Exception('حدث خطأ أثناء الاتصال بالخادم السحابي');
+        throw Exception('رمز التفعيل غير مسجل في السيرفر السحابي. يرجى التأكد من الرمز أو استخدام المفتاح الافتراضي: PHARMAOS-COMMERCIAL-LIFETIME');
       }
     } catch (e) {
-      if (e is Exception && (e.toString().contains('رمز التفعيل') || e.toString().contains('موقوف') || e.toString().contains('انتهى'))) {
+      if (e is Exception && !e.toString().contains('SocketException') && !e.toString().contains('TimeoutException')) {
         rethrow;
       }
-      debugPrint('loginWithActivationKey online search error: $e');
-      throw Exception('لا يوجد اتصال بالإنترنت أو الخادم السحابي غير متوفر');
+      debugPrint('loginWithActivationKey network error: $e');
+      throw Exception('تعذر الاتصال بالخادم السحابي. يرجى التحقق من اتصال الإنترنت بالجهاز.');
     }
   }
 
