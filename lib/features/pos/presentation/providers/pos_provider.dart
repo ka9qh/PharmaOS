@@ -14,8 +14,6 @@ import '../../domain/entities/pos_entity.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../medicines/domain/entities/medicines_entity.dart';
 import '../../../invoices/domain/entities/invoice_entity.dart';
-import '../../../medicines/domain/repositories/medicines_repository.dart';
-import '../../../medicines/domain/usecases/medicines_usecase.dart';
 import '../../../inventory/domain/repositories/inventory_repository.dart';
 import '../../../inventory/domain/usecases/inventory_usecase.dart';
 import '../../../sales/domain/entities/sales_entity.dart';
