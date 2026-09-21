@@ -259,11 +259,8 @@ class _UpdateCheckerCardState extends State<UpdateCheckerCard> {
             FilledButton(
               onPressed: () async {
                 await LicenseService.activateLicense(
-                  pharmacyId: pharmIdCtrl.text,
-                  pharmacyName: pharmNameCtrl.text,
                   licenseKey: licenseKeyCtrl.text,
-                  branchId: branchIdCtrl.text,
-                  branchName: branchNameCtrl.text,
+                  branchActivationKey: branchIdCtrl.text.isNotEmpty ? branchIdCtrl.text : null,
                 );
                 await _loadTenantConfig();
                 if (ctx.mounted) Navigator.pop(ctx);

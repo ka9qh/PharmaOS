@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'splash_loading_screen.dart';
 import '../features/auth/presentation/screens/auth_screen.dart';
+import '../features/auth/presentation/screens/activation_screen.dart';
 import '../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../features/licensing/presentation/screens/licensing_screen.dart';
 import '../features/pos/presentation/screens/pos_screen.dart';
@@ -43,7 +44,7 @@ class AppRouter {
         ),
         GoRoute(
           path: '/activation',
-          builder: (context, state) => const LicensingScreen(),
+          builder: (context, state) => const ActivationScreen(),
         ),
         GoRoute(
           path: '/splash',

@@ -65,15 +65,34 @@ class OwnerApiService {
 
     try {
       // 1. استرجاع معلومات الصيدلية من السيرفر السحابي
-      final url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$key&limit=1';
+      final url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$key&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end,branches(name,is_active)&limit=1';
       final response = await http.get(Uri.parse(url), headers: _headers(defaultKey)).timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
         if (data is List && data.isNotEmpty) {
           final p = data.first;
+          
+          if (p['is_active'] == false || p['paused_by_admin'] == true) {
+            throw Exception('هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
+          }
+
+          if (p['subscription_type'] == 'limited' && p['subscription_end'] != null) {
+            final end = DateTime.parse(p['subscription_end']);
+            if (DateTime.now().isAfter(end)) {
+              throw Exception('لقد انتهى اشتراكك، يرجى تجديد الاشتراك');
+            }
+          }
+
           final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 1;
           final pName = p['name'] ?? 'صيدلية النور النموذجية';
+
+          // جلب أسماء الفروع النشطة
+          List<String> branchesList = ['الفرع الرئيسي'];
+          if (p['branches'] != null && p['branches'] is List) {
+            final bs = (p['branches'] as List).where((b) => b['is_active'] == true).map((b) => b['name'].toString()).toList();
+            if (bs.isNotEmpty) branchesList = bs;
+          }
 
           final config = OwnerTenantConfig(
             pharmacyId: pId,
@@ -82,7 +101,7 @@ class OwnerApiService {
             managerName: 'المدير العام',
             supabaseUrl: defaultUrl,
             supabaseKey: defaultKey,
-            branches: ['الفرع الرئيسي', 'فرع 2', 'كاشير الصالة'],
+            branches: branchesList,
           );
 
           await saveConfig(config);
@@ -94,7 +113,7 @@ class OwnerApiService {
          throw Exception('حدث خطأ أثناء الاتصال بالخادم السحابي');
       }
     } catch (e) {
-      if (e is Exception && e.toString().contains('رمز التفعيل')) {
+      if (e is Exception && (e.toString().contains('رمز التفعيل') || e.toString().contains('موقوف') || e.toString().contains('انتهى'))) {
         rethrow;
       }
       debugPrint('loginWithActivationKey online search error: $e');

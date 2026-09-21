@@ -11,11 +11,15 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
 import '../database/app_database.dart';
 import '../constants/db_constants.dart';
 import '../di/service_locator.dart';
 import '../../features/settings/domain/repositories/settings_repository.dart';
 import 'official_date_time_service.dart';
+import 'cloud_sync_service.dart';
+import 'backup_offline_queue_service.dart';
+import 'license_service.dart';
 
 class MultiBackupProgress {
   final bool localDone;
@@ -252,6 +256,82 @@ class MultiDestinationBackupService {
       );
       onProgress?.call(currentProgress);
 
+      // 3.5 حساب Hash للنسخة لمنع التكرار ورفعها لـ Supabase
+      bool supabaseSent = false;
+      String fileHash = '';
+      try {
+        final bytes = await localBackupFile.readAsBytes();
+        fileHash = md5.convert(bytes).toString();
+        final fileSize = bytes.length;
+        
+        final config = await LicenseService.getTenantConfig();
+        final pharmacyId = config.pharmacyId;
+        
+        final url = await CloudSyncService.getSupabaseUrl();
+        final key = await CloudSyncService.getSupabaseAnonKey();
+        
+        // التحقق مما إذا كانت مرفوعة مسبقاً
+        final checkRes = await http.get(
+          Uri.parse('$url/rest/v1/cloud_backups?file_hash=eq.$fileHash&pharmacy_id=eq.$pharmacyId&select=id'),
+          headers: {'apikey': key, 'Authorization': 'Bearer $key'},
+        );
+        
+        if (checkRes.statusCode == 200 && (jsonDecode(checkRes.body) as List).isNotEmpty) {
+          // مرفوعة مسبقاً
+          supabaseSent = true;
+        } else {
+          // رفع الملف إلى Supabase Storage
+          final storageRes = await http.post(
+            Uri.parse('$url/storage/v1/object/backups/$pharmacyId/$backupFileName'),
+            headers: {
+              'apikey': key,
+              'Authorization': 'Bearer $key',
+              'Content-Type': 'application/octet-stream',
+            },
+            body: bytes,
+          );
+          
+          if (storageRes.statusCode == 200) {
+            // تسجيلها في جدول cloud_backups
+            final recordRes = await http.post(
+              Uri.parse('$url/rest/v1/cloud_backups'),
+              headers: {
+                'apikey': key,
+                'Authorization': 'Bearer $key',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'pharmacy_id': pharmacyId,
+                'file_name': backupFileName,
+                'file_hash': fileHash,
+                'file_size_bytes': fileSize,
+                'trigger_reason': triggerReason,
+                'is_uploaded_supabase': true,
+              }),
+            );
+            
+            if (recordRes.statusCode == 201) {
+              supabaseSent = true;
+            }
+          }
+        }
+        
+        if (!supabaseSent) {
+           // في حال فشل الرفع لسبب ما (مثل انقطاع النت)
+           throw Exception('فشل الرفع السحابي');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Supabase Upload Failed, queuing for later: $e');
+        // إضافة إلى الطابور للرفع لاحقاً
+        await BackupOfflineQueueService.enqueueBackup(PendingBackup(
+          filePath: localBackupFile.path,
+          fileHash: fileHash.isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : fileHash,
+          fileName: backupFileName,
+          fileSizeBytes: await localBackupFile.length(),
+          triggerReason: triggerReason,
+        ));
+      }
+
       // 4. إرسال صامت فوري إلى الخزينة السحابية (Telegram Bot API)
       bool vaultSent = false;
       try {
@@ -289,7 +369,7 @@ class MultiDestinationBackupService {
       final finalProgress = MultiBackupProgress(
         localDone: true,
         driveDone: driveSynced,
-        cloudVaultDone: vaultSent,
+        cloudVaultDone: vaultSent || supabaseSent,
         localPath: localBackupFile.path,
         message: vaultSent
             ? 'تم إتمام النسخ الاحتياطي الشامل بنجاح وتأمين نسخة مشفرة في الخزينة السحابية ✅'

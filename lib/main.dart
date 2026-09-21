@@ -14,9 +14,12 @@ import 'core/widgets/app_screenshot_wrapper.dart';
 import 'core/services/official_date_time_service.dart';
 import 'core/services/multi_destination_backup_service.dart';
 import 'core/services/cloud_backup_service.dart';
+import 'core/services/cloud_sync_service.dart';
 import 'core/widgets/pre_exit_backup_dialog.dart';
 import 'core/services/owner_live_sync_service.dart';
 import 'core/widgets/owner_floating_notification.dart';
+import 'core/services/license_service.dart';
+import 'core/services/backup_offline_queue_service.dart';
 import 'features/closing/presentation/widgets/pre_exit_shift_closing_dialog.dart';
 
 Future<void> main() async {
@@ -48,15 +51,21 @@ Future<void> main() async {
     try {
       final seeder = sl<DatabaseSeederService>();
       await seeder.seedDatabaseIfEmpty();
-      // فحص المزامنة السحابية التلقائية الصامتة فور توفر النت
-      await CloudBackupService.triggerBackgroundAutoSync();
+      
+      // رفع النسخ الاحتياطية المعلقة (طابور العمل دون اتصال)
+      await BackupOfflineQueueService.syncOfflineQueue();
+      
+      await CloudSyncService.triggerFullSync();
     } catch (e) {
-      debugPrint('Background seeder check: $e');
+      debugPrint('Background initialization warning: $e');
     }
   });
 
+  // فحص التفعيل
+  final bool isValid = await LicenseService.isLicenseValid();
+
   // 5) فتح مسار التطبيق الأساسي
-  final router = AppRouter.build(initialLocation: '/login');
+  final router = AppRouter.build(initialLocation: isValid ? '/login' : '/activation');
 
   runApp(
     ProviderScope(

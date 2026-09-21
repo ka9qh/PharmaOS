@@ -12,6 +12,12 @@ class TenantConfig {
   final String cloudServerUrl; // رابط الخادم السحابي المشفر
   final DateTime? licenseExpiry; // تاريخ انتهاء الترخيص (null للرخصة الدائمة)
   final bool isActivated; // هل تم تفعيل النظام برخصة رسمية؟
+  
+  // حقول SaaS الجديدة
+  final String licenseType; // 'single' أو 'multi_branch'
+  final String subscriptionType; // 'lifetime' أو 'limited'
+  final DateTime? subscriptionEnd; // تاريخ انتهاء الاشتراك
+  final bool pausedByAdmin; // هل تم إيقاف الصيدلية من قبل الإدارة؟
 
   const TenantConfig({
     this.pharmacyId = 'PHARM-LOCAL-01',
@@ -24,6 +30,10 @@ class TenantConfig {
     this.cloudServerUrl = '',
     this.licenseExpiry,
     this.isActivated = true,
+    this.licenseType = 'single',
+    this.subscriptionType = 'lifetime',
+    this.subscriptionEnd,
+    this.pausedByAdmin = false,
   });
 
   TenantConfig copyWith({
@@ -37,6 +47,10 @@ class TenantConfig {
     String? cloudServerUrl,
     DateTime? licenseExpiry,
     bool? isActivated,
+    String? licenseType,
+    String? subscriptionType,
+    DateTime? subscriptionEnd,
+    bool? pausedByAdmin,
   }) {
     return TenantConfig(
       pharmacyId: pharmacyId ?? this.pharmacyId,
@@ -49,6 +63,10 @@ class TenantConfig {
       cloudServerUrl: cloudServerUrl ?? this.cloudServerUrl,
       licenseExpiry: licenseExpiry ?? this.licenseExpiry,
       isActivated: isActivated ?? this.isActivated,
+      licenseType: licenseType ?? this.licenseType,
+      subscriptionType: subscriptionType ?? this.subscriptionType,
+      subscriptionEnd: subscriptionEnd ?? this.subscriptionEnd,
+      pausedByAdmin: pausedByAdmin ?? this.pausedByAdmin,
     );
   }
 
@@ -64,6 +82,10 @@ class TenantConfig {
       'cloudServerUrl': cloudServerUrl,
       'licenseExpiry': licenseExpiry?.toIso8601String(),
       'isActivated': isActivated,
+      'licenseType': licenseType,
+      'subscriptionType': subscriptionType,
+      'subscriptionEnd': subscriptionEnd?.toIso8601String(),
+      'pausedByAdmin': pausedByAdmin,
     };
   }
 
@@ -79,6 +101,10 @@ class TenantConfig {
       cloudServerUrl: map['cloudServerUrl'] ?? '',
       licenseExpiry: map['licenseExpiry'] != null ? DateTime.tryParse(map['licenseExpiry']) : null,
       isActivated: map['isActivated'] ?? true,
+      licenseType: map['licenseType'] ?? 'single',
+      subscriptionType: map['subscriptionType'] ?? 'lifetime',
+      subscriptionEnd: map['subscriptionEnd'] != null ? DateTime.tryParse(map['subscriptionEnd']) : null,
+      pausedByAdmin: map['pausedByAdmin'] ?? false,
     );
   }
 

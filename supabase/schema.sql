@@ -11,6 +11,14 @@ CREATE TABLE IF NOT EXISTS public.pharmacies (
     phone VARCHAR(50),
     address TEXT,
     is_active BOOLEAN DEFAULT TRUE,
+    license_type VARCHAR(20) DEFAULT 'single',
+    subscription_type VARCHAR(20) DEFAULT 'lifetime',
+    subscription_start TIMESTAMPTZ DEFAULT NOW(),
+    subscription_end TIMESTAMPTZ,
+    device_fingerprint VARCHAR(255),
+    owner_name VARCHAR(200),
+    notes TEXT,
+    paused_by_admin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -22,6 +30,8 @@ CREATE TABLE IF NOT EXISTS public.branches (
     name VARCHAR(150) NOT NULL,
     device_fingerprint VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE,
+    branch_activation_key VARCHAR(50) UNIQUE,
+    branch_device_fingerprint VARCHAR(255),
     last_sync_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -169,6 +179,44 @@ CREATE TABLE IF NOT EXISTS public.cloud_tele_consultations (
     resolved_at TIMESTAMPTZ
 );
 
+-- 12. سجل النسخ الاحتياطي السحابي (لمنع التكرار)
+CREATE TABLE IF NOT EXISTS public.cloud_backups (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id BIGINT REFERENCES public.branches(id) ON DELETE SET NULL,
+    file_name VARCHAR(500) NOT NULL,
+    file_hash VARCHAR(128),
+    file_size_bytes BIGINT,
+    backup_source VARCHAR(50) DEFAULT 'system',
+    trigger_reason VARCHAR(250),
+    is_uploaded_drive BOOLEAN DEFAULT FALSE,
+    is_uploaded_telegram BOOLEAN DEFAULT FALSE,
+    is_uploaded_supabase BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(pharmacy_id, file_hash)
+);
+
+-- 13. طابور النسخ المعلّقة (Offline Queue)
+CREATE TABLE IF NOT EXISTS public.pending_backup_queue (
+    id BIGSERIAL PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    file_name VARCHAR(500) NOT NULL,
+    file_hash VARCHAR(128) UNIQUE NOT NULL,
+    local_path TEXT,
+    retry_count INT DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 14. سجل أنشطة الأدمن
+CREATE TABLE IF NOT EXISTS public.admin_audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    action VARCHAR(100) NOT NULL,
+    target_pharmacy_id BIGINT,
+    details TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- مؤشرات الأداء السريع (Indexes)
 -- ============================================================
@@ -181,6 +229,10 @@ CREATE INDEX IF NOT EXISTS idx_suppliers_pharmacy ON public.cloud_suppliers(phar
 CREATE INDEX IF NOT EXISTS idx_expenses_pharmacy ON public.cloud_expenses(pharmacy_id);
 CREATE INDEX IF NOT EXISTS idx_batches_pharmacy_branch ON public.cloud_batches(pharmacy_id, branch_id);
 CREATE INDEX IF NOT EXISTS idx_tele_consultations_pharmacy ON public.cloud_tele_consultations(pharmacy_id, status);
+CREATE INDEX IF NOT EXISTS idx_backups_pharmacy ON public.cloud_backups(pharmacy_id);
+CREATE INDEX IF NOT EXISTS idx_backups_hash ON public.cloud_backups(file_hash);
+CREATE INDEX IF NOT EXISTS idx_branches_activation ON public.branches(branch_activation_key);
+CREATE INDEX IF NOT EXISTS idx_pharmacies_license ON public.pharmacies(license_key);
 
 -- ============================================================
 -- حماية العزل التام بين الصيدليات (Row Level Security - RLS)
@@ -196,6 +248,9 @@ ALTER TABLE public.cloud_suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cloud_tele_consultations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_backups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pending_backup_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
 
 -- سياسات الوصول والحماية (Multi-Tenant Isolation Policies)
 CREATE POLICY "Allow pharmacy full access to own data" ON public.pharmacies FOR ALL USING (true);
@@ -209,4 +264,6 @@ CREATE POLICY "Allow suppliers access to own pharmacy" ON public.cloud_suppliers
 CREATE POLICY "Allow expenses access to own pharmacy" ON public.cloud_expenses FOR ALL USING (true);
 CREATE POLICY "Allow batches access to own pharmacy" ON public.cloud_batches FOR ALL USING (true);
 CREATE POLICY "Allow tele consultations access to own pharmacy" ON public.cloud_tele_consultations FOR ALL USING (true);
-
+CREATE POLICY "backups_policy" ON public.cloud_backups FOR ALL USING (true);
+CREATE POLICY "queue_policy" ON public.pending_backup_queue FOR ALL USING (true);
+CREATE POLICY "audit_policy" ON public.admin_audit_log FOR ALL USING (true);
