@@ -53,12 +53,16 @@ function renderTable(data) {
         const licenseTypeAr = tenant.license_type === 'single' ? 'فردية' : 'لها فروع';
         
         let branchesButton = '';
+        const nameDisplay = tenant.license_type === 'multi' 
+            ? `<button onclick="openBranchesModal('${tenant.id}', '${tenant.name}')" class="text-blue-600 hover:text-blue-800 hover:underline font-bold">${tenant.name} <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full mr-1">عرض الفروع</span></button>`
+            : `<span class="font-bold">${tenant.name}</span>`;
+
         if (tenant.license_type === 'multi') {
             branchesButton = `<button onclick="openBranchesModal('${tenant.id}', '${tenant.name}')" class="text-sm px-3 py-1 rounded shadow bg-blue-500 text-white hover:bg-blue-600 mr-2">الفروع</button>`;
         }
 
         tr.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap font-bold text-right">${tenant.name}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-right">${nameDisplay}</td>
             <td class="px-6 py-4 whitespace-nowrap font-mono text-sm bg-gray-50 text-right">${tenant.license_key}</td>
             <td class="px-6 py-4 whitespace-nowrap text-right">${statusBadge}</td>
             <td class="px-6 py-4 whitespace-nowrap text-right">${licenseTypeAr}</td>
