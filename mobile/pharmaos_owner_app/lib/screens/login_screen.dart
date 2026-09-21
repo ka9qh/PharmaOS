@@ -1,5 +1,6 @@
 // شاشة تسجيل الدخول برمز التفعيل الشامل للصيدلية - PharmaOS Owner App
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
 import '../widgets/luxury_background.dart';
@@ -37,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     final key = _keyController.text.trim();
     if (key.isEmpty) {
-      setState(() => _errorMessage = 'يرجى إدخال رمز التفعيل الخاص بالصيدلية');
+      setState(() => _errorMessage = 'يرجى إدخال أو مسح رمز التفعيل الخاص بالصيدلية');
       return;
     }
 
@@ -64,6 +65,106 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  /// فتح ماسح الباركود وQR Code بالكاميرا
+  void _openQrScanner() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF10B981), size: 24),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'وجه الكاميرا نحو باركود / QR الصيدلية',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'يمكنك مسح الرمز المعروض في شاشة النظام (الإعدادات -> رموز التفعيل) أو من لوحة تحكم المطور.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      MobileScanner(
+                        onDetect: (capture) {
+                          final List<Barcode> barcodes = capture.barcodes;
+                          for (final barcode in barcodes) {
+                            final rawValue = barcode.rawValue?.trim();
+                            if (rawValue != null && rawValue.isNotEmpty) {
+                              Navigator.pop(ctx);
+                              _keyController.text = rawValue;
+                              _handleLogin();
+                              break;
+                            }
+                          }
+                        },
+                      ),
+                      // إطار توجيه المسح
+                      Container(
+                        width: 240,
+                        height: 240,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFF10B981), width: 3),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF10B981).withOpacity(0.2),
+                              blurRadius: 20,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -156,8 +257,33 @@ class _LoginScreenState extends State<LoginScreen> {
                               letterSpacing: 1.1,
                             ),
                             decoration: InputDecoration(
-                              hintText: 'مثال: صيدلية_النور#HWID-XXXX-XXXX أو المفتاح السحابي',
+                              hintText: 'أدخل رمز التفعيل أو امسح الباركود',
                               prefixIcon: Icon(Icons.security_rounded, color: OwnerTheme.primaryEmeraldLight),
+                              suffixIcon: IconButton(
+                                icon: Icon(Icons.qr_code_scanner_rounded, color: OwnerTheme.accentGold),
+                                tooltip: 'مسح الباركود بالكاميرا',
+                                onPressed: _openQrScanner,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // زر مسح الباركود المباشر
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: OwnerTheme.accentGoldLight,
+                                side: BorderSide(color: OwnerTheme.accentGold.withOpacity(0.5)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                              label: const Text(
+                                'مسح باركود الصيدلية بالكاميرا 📷',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              onPressed: _openQrScanner,
                             ),
                           ),
 

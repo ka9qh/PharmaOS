@@ -1,6 +1,6 @@
-// بطاقة رموز التفعيل والترخيص واقتران الأجهزة المحمية برمز دخول المدير - PharmaOS
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/licensing/hardware_id_generator.dart';
 import '../../../../core/services/device_branch_manager_service.dart';
@@ -196,6 +196,81 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
     );
   }
 
+  void _showQrDialog(String code, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Row(
+            children: [
+              const Icon(Icons.qr_code_2_rounded, color: Color(0xFF10B981), size: 28),
+              const SizedBox(width: 10),
+              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+                child: QrImageView(
+                  data: code,
+                  version: QrVersions.auto,
+                  size: 220,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SelectableText(
+                code,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.cyanAccent,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'امسح هذا الرمز باستخدام تطبيق المدير على هاتفك للربط التلقائي الفوري.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 11),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('نسخ الرمز'),
+              onPressed: () {
+                _copyToClipboard(code, title);
+                Navigator.pop(ctx);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -302,7 +377,70 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               ),
             ),
           ] else ...[
-            // الحالة المفتوحة: عرض جميع الرموز مع أزرار النسخ
+            // الحالة المفتوحة: عرض باركود / QR Code الاقتران الفوري
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: QrImageView(
+                      data: _activationRequestCode.isNotEmpty ? _activationRequestCode : _hardwareId,
+                      version: QrVersions.auto,
+                      size: 90,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF10B981), size: 18),
+                            SizedBox(width: 6),
+                            Text(
+                              'باركود الاقتران والتفعيل الفوري 📲',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'افتح تطبيق المدير على هاتفك واضغط على "مسح الباركود بالكاميرا" لتسجيل الدخول والربط تلقائياً.',
+                          style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.3),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF10B981),
+                            side: const BorderSide(color: Color(0xFF10B981)),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.fullscreen_rounded, size: 16),
+                          label: const Text('تكبير الباركود للمسح', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          onPressed: () => _showQrDialog(_activationRequestCode.isNotEmpty ? _activationRequestCode : _hardwareId, 'باركود تفعيل الصيدلية'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // عرض جميع الرموز مع أزرار النسخ
             _buildRevealedCard(
               title: 'كود طلب التفعيل الذكي للصيدلية (Master Code)',
               subtitle: 'هذا الكود يربط اسم الصيدلية بمعرف الجهاز تلقائياً',
