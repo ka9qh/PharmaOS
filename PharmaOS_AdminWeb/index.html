@@ -103,6 +103,31 @@
         </main>
     </div>
 
+    <!-- Branches Modal -->
+    <div id="branchesModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center backdrop-blur-sm">
+        <div class="bg-white w-3/4 max-w-4xl rounded-xl shadow-2xl p-6 flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4 border-b pb-3">
+                <h2 id="branchesModalTitle" class="text-2xl font-bold">فروع الصيدلية</h2>
+                <button onclick="closeBranchesModal()" class="text-gray-500 hover:text-red-500 text-xl font-bold">&times;</button>
+            </div>
+            <div class="overflow-auto flex-grow">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">اسم الفرع</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">كود التفعيل (الفرع)</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">الحالة</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="branchesTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Branches injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Configuration Script -->
     <script src="config.js"></script>
     <script src="app.js"></script>
