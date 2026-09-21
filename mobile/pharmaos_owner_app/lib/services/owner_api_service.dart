@@ -65,7 +65,7 @@ class OwnerApiService {
 
     try {
       // 1. استرجاع معلومات الصيدلية من السيرفر السحابي
-      final url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$key&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end,branches(name,is_active)&limit=1';
+      final url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$key&select=id,name,is_active,branches(name,is_active)&limit=1';
       final response = await http.get(Uri.parse(url), headers: _headers(defaultKey)).timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
