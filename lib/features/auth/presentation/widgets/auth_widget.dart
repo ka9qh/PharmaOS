@@ -10,7 +10,7 @@ class AuthLogoHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Icon(Icons.local_pharmacy_rounded, size: 64),
+        Image.asset('assets/app_icon.png', width: 80, height: 80),
         const SizedBox(height: 8),
         Text(
           AppConstants.appName,

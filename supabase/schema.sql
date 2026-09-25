@@ -267,3 +267,74 @@ CREATE POLICY "Allow tele consultations access to own pharmacy" ON public.cloud_
 CREATE POLICY "backups_policy" ON public.cloud_backups FOR ALL USING (true);
 CREATE POLICY "queue_policy" ON public.pending_backup_queue FOR ALL USING (true);
 CREATE POLICY "audit_policy" ON public.admin_audit_log FOR ALL USING (true);
+
+-- 15. جدول أوامر تطبيق المدير عن بعد
+CREATE TABLE IF NOT EXISTS public.remote_commands (
+    id VARCHAR(150) PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id VARCHAR(100),
+    device_id VARCHAR(100),
+    type VARCHAR(50) NOT NULL,
+    payload JSONB DEFAULT '{}'::jsonb,
+    status VARCHAR(50) DEFAULT 'pending',
+    result_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    executed_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ
+);
+
+-- 16. جدول رسائل الدردشة بين تطبيق المدير ونظام الصيدلية
+CREATE TABLE IF NOT EXISTS public.owner_chat_messages (
+    id VARCHAR(150) PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id VARCHAR(100),
+    device_id VARCHAR(100),
+    sender_name VARCHAR(200),
+    sender_role VARCHAR(50),
+    text TEXT,
+    audio_base64 TEXT,
+    image_base64 TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 17. جدول إطارات بث الشاشة والكاميرا
+CREATE TABLE IF NOT EXISTS public.cloud_stream_frames (
+    id BIGSERIAL PRIMARY KEY,
+    channel VARCHAR(50) NOT NULL,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    branch_id VARCHAR(100),
+    device_id VARCHAR(100),
+    frame_base64 TEXT NOT NULL,
+    fps INT DEFAULT 15,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 18. Audit Logs للمدير
+CREATE TABLE IF NOT EXISTS public.owner_audit_actions (
+    id VARCHAR(150) PRIMARY KEY,
+    pharmacy_id BIGINT REFERENCES public.pharmacies(id) ON DELETE CASCADE,
+    action_type VARCHAR(100) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_remote_commands_pharmacy ON public.remote_commands(pharmacy_id, status);
+CREATE INDEX IF NOT EXISTS idx_owner_chat_messages_pharmacy ON public.owner_chat_messages(pharmacy_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_cloud_stream_frames_pharmacy_channel ON public.cloud_stream_frames(pharmacy_id, channel, created_at);
+CREATE INDEX IF NOT EXISTS idx_owner_audit_actions_pharmacy ON public.owner_audit_actions(pharmacy_id, created_at);
+
+-- RLS
+ALTER TABLE public.remote_commands ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.owner_chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cloud_stream_frames ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.owner_audit_actions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow remote commands access to own pharmacy" ON public.remote_commands FOR ALL USING (true);
+CREATE POLICY "Allow owner chat messages access to own pharmacy" ON public.owner_chat_messages FOR ALL USING (true);
+CREATE POLICY "Allow stream frames access to own pharmacy" ON public.cloud_stream_frames FOR ALL USING (true);
+CREATE POLICY "Allow owner audit actions access to own pharmacy" ON public.owner_audit_actions FOR ALL USING (true);
+

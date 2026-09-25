@@ -86,7 +86,7 @@ class CloudSyncService {
     }
 
     try {
-      final tenantConfig = await LicenseService.getTenantConfig();
+      var tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await getSupabaseUrl();
       final apiKey = await getSupabaseAnonKey();
       final headers = _getHeaders(apiKey);
@@ -105,16 +105,27 @@ class CloudSyncService {
       };
 
       try {
-        await http
+        final pRes = await http
             .post(
               Uri.parse('$supabaseUrl/rest/v1/pharmacies'),
               headers: {
                 ...headers,
-                'Prefer': 'resolution=merge-duplicates',
+                'Prefer': 'return=representation,resolution=merge-duplicates',
               },
               body: jsonEncode(pharmacyPayload),
             )
             .timeout(const Duration(seconds: 10));
+
+        if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
+          final pData = jsonDecode(pRes.body);
+          if (pData is List && pData.isNotEmpty) {
+            final realId = pData.first['id'].toString();
+            if (tenantConfig.pharmacyId != realId) {
+              tenantConfig = tenantConfig.copyWith(pharmacyId: realId);
+              await LicenseService.saveTenantConfig(tenantConfig);
+            }
+          }
+        }
       } catch (_) {
         // الاستمرار حتى في حال وجود اتصال متقطع
       }

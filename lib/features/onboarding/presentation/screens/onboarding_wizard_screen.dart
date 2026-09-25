@@ -328,7 +328,10 @@ class _OnboardingWizardScreenState extends ConsumerState<OnboardingWizardScreen>
             hintStyle: const TextStyle(color: Colors.grey),
             filled: true,
             fillColor: const Color(0xFF1E293B),
-            prefixIcon: const Icon(Icons.local_pharmacy_rounded, color: Colors.cyanAccent),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Image.asset('assets/app_icon.png', width: 24, height: 24),
+            ),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),

@@ -318,20 +318,69 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                          child: _buildQuickActionCard(
-                            icon: Icons.videocam_rounded,
-                            color: const Color(0xFFE11D48),
-                            title: 'بث الشاشة والكاميرا للمدير',
-                            subtitle: 'بث حي ومباشر لشاشة الكاشير وكاميرا الصيدلية للمدير',
-                            buttonText: OwnerLiveSyncService.isScreenStreamingActive ? 'البث نشط 🟢' : 'تشغيل البث السحابي',
-                            onTap: () {
-                              if (OwnerLiveSyncService.isScreenStreamingActive) {
-                                OwnerLiveSyncService.stopScreenLiveStream();
-                              } else {
-                                OwnerLiveSyncService.startScreenLiveStream();
-                              }
-                              setState(() {});
-                            },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE11D48).withOpacity(0.3)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE11D48).withOpacity(0.15),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.videocam_rounded, color: Color(0xFFE11D48), size: 20),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Text(
+                                        'بث الشاشة والكاميرا للمدير',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'يتم التحكم في البث المباشر تلقائياً وبشكل حصري من خلال تطبيق المدير.',
+                                  style: TextStyle(color: Colors.white60, fontSize: 11, height: 1.3),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: (OwnerLiveSyncService.isScreenStreamingActive || OwnerLiveSyncService.isCameraStreamingActive)
+                                        ? Colors.greenAccent.withOpacity(0.1)
+                                        : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      (OwnerLiveSyncService.isScreenStreamingActive || OwnerLiveSyncService.isCameraStreamingActive)
+                                          ? 'البث نشط (مراقب) 🟢'
+                                          : 'النظام في وضع الاستعداد',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: (OwnerLiveSyncService.isScreenStreamingActive || OwnerLiveSyncService.isCameraStreamingActive)
+                                            ? Colors.greenAccent
+                                            : Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

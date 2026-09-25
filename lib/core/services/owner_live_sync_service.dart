@@ -524,7 +524,9 @@ class OwnerLiveSyncService {
           body: jsonEncode(frame.toJson()),
         ).timeout(const Duration(seconds: 3));
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error in _captureAndBroadcastFrame ($channel): $e');
+    }
   }
 
   static Future<String> _renderCctvFrameToPng(String pharmacyName, String branchId) async {

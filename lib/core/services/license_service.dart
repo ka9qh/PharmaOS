@@ -72,7 +72,7 @@ class LicenseService {
       final key = await CloudSyncService.getSupabaseAnonKey();
       
       final res = await http.get(
-        Uri.parse('$url/rest/v1/pharmacies?license_key=eq.${config.licenseKey}&select=is_active,subscription_type,subscription_end,paused_by_admin'),
+        Uri.parse('$url/rest/v1/pharmacies?license_key=eq.${config.licenseKey}&select=id,is_active,subscription_type,subscription_end,paused_by_admin'),
         headers: {
           'apikey': key,
           'Authorization': 'Bearer $key',
@@ -83,11 +83,13 @@ class LicenseService {
         final data = json.decode(res.body) as List;
         if (data.isNotEmpty) {
           final p = data.first;
+          final String pId = p['id'].toString();
           final bool paused = p['paused_by_admin'] == true || p['is_active'] == false;
           final subType = p['subscription_type'];
           final subEndStr = p['subscription_end'];
           
           final updated = config.copyWith(
+            pharmacyId: pId,
             pausedByAdmin: paused,
             subscriptionType: subType,
             subscriptionEnd: subEndStr != null ? DateTime.parse(subEndStr) : null,

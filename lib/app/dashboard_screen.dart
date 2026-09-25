@@ -75,12 +75,12 @@ class DashboardScreen extends ConsumerWidget {
           title: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.local_pharmacy, color: Colors.blue),
+                child: Image.asset('assets/app_icon.png', width: 24, height: 24),
               ),
               const SizedBox(width: 10),
               const Text('لوحة التحكم - PharmaOS'),

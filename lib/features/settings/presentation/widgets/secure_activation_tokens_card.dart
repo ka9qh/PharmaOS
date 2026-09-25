@@ -399,7 +399,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: QrImageView(
-                      data: _activationRequestCode.isNotEmpty ? _activationRequestCode : _hardwareId,
+                      data: _licenseKey.isNotEmpty ? _licenseKey : _hardwareId,
                       version: QrVersions.auto,
                       size: 90,
                     ),
@@ -435,7 +435,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                           ),
                           icon: const Icon(Icons.fullscreen_rounded, size: 16),
                           label: const Text('تكبير الباركود للمسح', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          onPressed: () => _showQrDialog(_activationRequestCode.isNotEmpty ? _activationRequestCode : _hardwareId, 'باركود تفعيل الصيدلية'),
+                          onPressed: () => _showQrDialog(_licenseKey.isNotEmpty ? _licenseKey : _hardwareId, 'باركود تفعيل الصيدلية'),
                         ),
                       ],
                     ),
@@ -446,9 +446,9 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
 
             // عرض جميع الرموز مع أزرار النسخ
             _buildRevealedCard(
-              title: 'كود طلب التفعيل الذكي للصيدلية (Master Code)',
-              subtitle: 'هذا الكود يربط اسم الصيدلية بمعرف الجهاز تلقائياً',
-              value: _activationRequestCode,
+              title: 'رمز تفعيل الصيدلية وتطبيق المدير (License Key)',
+              subtitle: 'استخدم هذا الرمز أو الباركود لربط تطبيق المدير بصيدليتك',
+              value: _licenseKey,
               icon: Icons.qr_code_2_rounded,
               color: Colors.cyanAccent,
             ),
@@ -461,10 +461,11 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               color: Colors.purpleAccent,
             ),
             const SizedBox(height: 10),
+            const SizedBox(height: 10),
             _buildRevealedCard(
               title: 'حالة الترخيص والتشغيل',
               subtitle: 'الترخيص نشط ومفعل مدى الحياة لهذا الجهاز',
-              value: _licenseKey,
+              value: 'نشط مدى الحياة',
               icon: Icons.verified_user_rounded,
               color: const Color(0xFF10B981),
             ),

@@ -8,6 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/settings/domain/repositories/settings_repository.dart';
 import '../di/service_locator.dart';
 
+import 'cloud_sync_service.dart';
+import 'license_service.dart';
+import 'package:http/http.dart' as http;
+
 enum TopologyMode {
   singleDevice,       // جهاز فردي مستقل
   multiDeviceNetwork, // عدة أجهزة كاشير في نفس الصيدلية
@@ -172,7 +176,7 @@ class DeviceBranchManagerService {
     await prefs.setString(_prefDevicesList, raw);
   }
 
-  /// إنشاء فرع جديد وتوليد رمز تفعيل واقتران فريد له
+  /// إنشاء فرع جديد وتوليد رمز تفعيل واقتران فريد له ورفعه للسحابة
   static Future<BranchConfig> addBranch({required String name, required String code}) async {
     final branches = await getBranches();
     final newBranch = BranchConfig(
@@ -184,6 +188,32 @@ class DeviceBranchManagerService {
     );
     branches.add(newBranch);
     await saveBranches(branches);
+
+    // مزامنة الفرع مع Supabase
+    try {
+      final tenantConfig = await LicenseService.getTenantConfig();
+      if (tenantConfig.isActivated) {
+        final url = await CloudSyncService.getSupabaseUrl();
+        final key = await CloudSyncService.getSupabaseAnonKey();
+        await http.post(
+          Uri.parse('$url/rest/v1/branches'),
+          headers: {
+            'apikey': key,
+            'Authorization': 'Bearer $key',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'pharmacy_id': tenantConfig.pharmacyId,
+            'name': name,
+            'branch_activation_key': newBranch.token,
+            'is_active': true,
+          }),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to sync branch to cloud: $e');
+    }
+
     return newBranch;
   }
 

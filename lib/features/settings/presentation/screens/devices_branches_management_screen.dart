@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/services/device_branch_manager_service.dart';
+import '../../../../core/services/license_service.dart';
+import '../../../../core/models/tenant_config.dart';
 import '../widgets/secure_activation_tokens_card.dart';
 
 class DevicesBranchesManagementScreen extends StatefulWidget {
@@ -18,6 +20,7 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
   TopologyMode _currentMode = TopologyMode.singleDevice;
   List<BranchConfig> _branches = [];
   List<DeviceConfig> _devices = [];
+  TenantConfig? _tenantConfig;
   bool _isLoading = true;
 
   @override
@@ -31,11 +34,14 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
     final mode = await DeviceBranchManagerService.getTopologyMode();
     final branches = await DeviceBranchManagerService.getBranches();
     final devices = await DeviceBranchManagerService.getDevices();
+    final tenantConfig = await LicenseService.getTenantConfig();
+    
     if (mounted) {
       setState(() {
         _currentMode = mode;
         _branches = branches;
         _devices = devices;
+        _tenantConfig = tenantConfig;
         _isLoading = false;
       });
     }
@@ -307,6 +313,9 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
   }
 
   Widget _buildTopologySelector() {
+    final bool isPro = _tenantConfig?.licenseType == 'multi_branch' || 
+                       (_tenantConfig?.licenseKey.contains('-PRO-') ?? false);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -345,8 +354,11 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
           _buildTopologyOption(
             mode: TopologyMode.multiBranch,
             title: 'إدارة مركزية متعددة الفروع (Multi-Branch Distributed)',
-            desc: 'سلسلة صيدليات مع فرع رئيسي وفروع فرعية متصلة ومزامنة مركزية.',
+            desc: isPro 
+                ? 'سلسلة صيدليات مع فرع رئيسي وفروع فرعية متصلة ومزامنة مركزية.'
+                : 'غير متاح في رخصتك الحالية (يتطلب ترخيص PRO متعدد الفروع).',
             icon: Icons.account_tree_rounded,
+            isDisabled: !isPro,
           ),
         ],
       ),
@@ -358,15 +370,16 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
     required String title,
     required String desc,
     required IconData icon,
+    bool isDisabled = false,
   }) {
     final isSelected = _currentMode == mode;
     return InkWell(
-      onTap: () => _updateMode(mode),
+      onTap: isDisabled ? null : () => _updateMode(mode),
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.teal.withOpacity(0.06) : const Color(0xFFF8FAFC),
+          color: isSelected ? Colors.teal.withOpacity(0.06) : (isDisabled ? Colors.grey.shade100 : const Color(0xFFF8FAFC)),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected ? Colors.teal : const Color(0xFFE2E8F0),
@@ -375,7 +388,7 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? Colors.teal : Colors.grey, size: 24),
+            Icon(icon, color: isSelected ? Colors.teal : (isDisabled ? Colors.grey.shade400 : Colors.grey), size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -386,13 +399,16 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isSelected ? Colors.teal.shade900 : const Color(0xFF1E293B),
+                      color: isSelected ? Colors.teal.shade900 : (isDisabled ? Colors.grey.shade500 : const Color(0xFF1E293B)),
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     desc,
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                    style: TextStyle(
+                      color: isDisabled ? Colors.redAccent.shade100 : Colors.grey.shade600, 
+                      fontSize: 11
+                    ),
                   ),
                 ],
               ),
@@ -401,7 +417,7 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
               value: mode,
               groupValue: _currentMode,
               activeColor: Colors.teal,
-              onChanged: (val) {
+              onChanged: isDisabled ? null : (val) {
                 if (val != null) _updateMode(val);
               },
             ),
@@ -412,6 +428,9 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
   }
 
   Widget _buildBranchesSection() {
+    final bool isPro = _tenantConfig?.licenseType == 'multi_branch' || 
+                       (_tenantConfig?.licenseKey.contains('-PRO-') ?? false);
+                       
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -439,10 +458,10 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
                 icon: const Icon(Icons.add_rounded, size: 16),
                 label: const Text('إضافة فرع'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.teal,
+                  backgroundColor: isPro ? Colors.teal : Colors.grey,
                   visualDensity: VisualDensity.compact,
                 ),
-                onPressed: _showAddBranchDialog,
+                onPressed: isPro ? _showAddBranchDialog : null,
               ),
             ],
           ),
