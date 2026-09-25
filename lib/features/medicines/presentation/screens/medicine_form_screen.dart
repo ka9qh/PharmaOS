@@ -83,21 +83,23 @@ class _MedicineFormScreenState extends ConsumerState<MedicineFormScreen> {
     final packSell = e?.packSellingPrice ?? (e?.sellingPrice ?? 100.0) * (_qtyPerPack() * _qtyPerStrip());
     final packPurch = e?.packPurchasePrice ?? (e?.purchasePrice ?? (packSell * 0.8)) * (_qtyPerPack() * _qtyPerStrip());
 
-    _packSellingPriceController = TextEditingController(text: packSell.toStringAsFixed(0));
-    _packPurchasePriceController = TextEditingController(text: packPurch.toStringAsFixed(0));
+    _packSellingPriceController = TextEditingController(text: e?.packSellingPrice?.toStringAsFixed(0) ?? packSell.toStringAsFixed(0));
+    _packPurchasePriceController = TextEditingController(text: e?.packPurchasePrice?.toStringAsFixed(0) ?? packPurch.toStringAsFixed(0));
 
     final cartonSell = e?.cartonSellingPrice ?? (packSell * (_qtyPerCarton() > 0 ? _qtyPerCarton() : 1));
     final cartonPurch = e?.cartonPurchasePrice ?? (packPurch * (_qtyPerCarton() > 0 ? _qtyPerCarton() : 1));
 
-    _cartonSellingPriceController = TextEditingController(text: cartonSell.toStringAsFixed(0));
-    _cartonPurchasePriceController = TextEditingController(text: cartonPurch.toStringAsFixed(0));
+    _cartonSellingPriceController = TextEditingController(text: e?.cartonSellingPrice?.toStringAsFixed(0) ?? cartonSell.toStringAsFixed(0));
+    _cartonPurchasePriceController = TextEditingController(text: e?.cartonPurchasePrice?.toStringAsFixed(0) ?? cartonPurch.toStringAsFixed(0));
     
-    _stripPurchasePriceController = TextEditingController();
-    _stripSellingPriceController = TextEditingController();
-    _unitPurchasePriceController = TextEditingController();
-    _unitSellingPriceController = TextEditingController();
+    _stripPurchasePriceController = TextEditingController(text: e?.stripPurchasePrice?.toStringAsFixed(1) ?? '');
+    _stripSellingPriceController = TextEditingController(text: e?.stripSellingPrice?.toStringAsFixed(1) ?? '');
+    _unitPurchasePriceController = TextEditingController(text: e?.purchasePrice.toStringAsFixed(1) ?? '');
+    _unitSellingPriceController = TextEditingController(text: e?.sellingPrice.toStringAsFixed(1) ?? '');
 
-    _recalculatePrices();
+    if (e == null) {
+      _recalculatePrices();
+    }
 
     _reorderLevelController = TextEditingController(text: e != null ? e.reorderLevel.toString() : '5');
     _reserve1Controller = TextEditingController(text: e?.reserveField1 ?? '');

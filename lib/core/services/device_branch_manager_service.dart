@@ -179,11 +179,18 @@ class DeviceBranchManagerService {
   /// إنشاء فرع جديد وتوليد رمز تفعيل واقتران فريد له ورفعه للسحابة
   static Future<BranchConfig> addBranch({required String name, required String code}) async {
     final branches = await getBranches();
+    
+    String? pharmacyId;
+    try {
+      final tenantConfig = await LicenseService.getTenantConfig();
+      pharmacyId = tenantConfig.pharmacyId;
+    } catch (_) {}
+
     final newBranch = BranchConfig(
       id: 'br-${DateTime.now().millisecondsSinceEpoch}',
       name: name,
       code: code,
-      token: _generateSecureToken(code),
+      token: _generateSecureToken(code, pharmacyId: pharmacyId),
       createdAt: DateTime.now(),
     );
     branches.add(newBranch);
@@ -224,11 +231,18 @@ class DeviceBranchManagerService {
     bool isMainServer = false,
   }) async {
     final devices = await getDevices();
+    
+    String? pharmacyId;
+    try {
+      final tenantConfig = await LicenseService.getTenantConfig();
+      pharmacyId = tenantConfig.pharmacyId;
+    } catch (_) {}
+
     final newDev = DeviceConfig(
       id: 'dev-${DateTime.now().millisecondsSinceEpoch}',
       branchId: branchId,
       name: name,
-      token: _generateSecureToken('DEV-${devices.length + 1}'),
+      token: _generateSecureToken('DEV-${devices.length + 1}', pharmacyId: pharmacyId),
       isMainServer: isMainServer,
       createdAt: DateTime.now(),
     );
@@ -252,12 +266,21 @@ class DeviceBranchManagerService {
   }
 
   /// توليد رمز تفعيل واقتران فريد ومحمي
-  static String _generateSecureToken(String prefix) {
+  static String _generateSecureToken(String prefix, {String? pharmacyId}) {
     final random = Random.secure();
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final part1 = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
     final part2 = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
     final part3 = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
+    
+    if (pharmacyId != null && pharmacyId.isNotEmpty) {
+       // تشفير معرف الصيدلية في الرمز لضمان عدم تداخله مع صيدليات أخرى أبداً
+       String phPrefix = pharmacyId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+       if (phPrefix.length > 4) phPrefix = phPrefix.substring(0, 4);
+       if (phPrefix.isEmpty) phPrefix = 'PHAR';
+       return 'PHOS-$phPrefix-$prefix-$part1-$part2-$part3';
+    }
+    
     return 'PHOS-$prefix-$part1-$part2-$part3';
   }
 

@@ -208,6 +208,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       medicineName: stock.medicineName,
       currentBarcode: stock.barcode,
       sellingPrice: stock.packSellingPrice ?? stock.sellingPrice,
+      companyName: stock.companyName,
+      supplierName: stock.supplierName,
       onBarcodeSaved: (newBarcode) async {
         final medRepo = sl<MedicinesRepository>();
         final med = await medRepo.getById(stock.medicineId);
@@ -224,11 +226,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
-  void _openEditMedicine(StockSummary stock) {
+  Future<void> _openEditMedicine(StockSummary stock) async {
+    final medRepo = sl<MedicinesRepository>();
+    final med = await medRepo.getById(stock.medicineId);
+    if (!mounted || med == null) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => MedicineFormScreen(existing: stock.toMedicineEntity()),
+        builder: (_) => MedicineFormScreen(existing: med),
       ),
     ).then((_) {
       ref.read(inventoryNotifierProvider.notifier).loadAll();

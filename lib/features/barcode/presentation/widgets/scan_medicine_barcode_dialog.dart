@@ -7,6 +7,8 @@ class ScanMedicineBarcodeDialog extends StatefulWidget {
   final String medicineName;
   final String currentBarcode;
   final double sellingPrice;
+  final String? companyName;
+  final String? supplierName;
   final Future<bool> Function(String newBarcode) onBarcodeSaved;
 
   const ScanMedicineBarcodeDialog({
@@ -15,6 +17,8 @@ class ScanMedicineBarcodeDialog extends StatefulWidget {
     required this.medicineName,
     required this.currentBarcode,
     required this.sellingPrice,
+    this.companyName,
+    this.supplierName,
     required this.onBarcodeSaved,
   });
 
@@ -24,6 +28,8 @@ class ScanMedicineBarcodeDialog extends StatefulWidget {
     required String medicineName,
     required String currentBarcode,
     required double sellingPrice,
+    String? companyName,
+    String? supplierName,
     required Future<bool> Function(String newBarcode) onBarcodeSaved,
   }) {
     return showDialog(
@@ -34,6 +40,8 @@ class ScanMedicineBarcodeDialog extends StatefulWidget {
         medicineName: medicineName,
         currentBarcode: currentBarcode,
         sellingPrice: sellingPrice,
+        companyName: companyName,
+        supplierName: supplierName,
         onBarcodeSaved: onBarcodeSaved,
       ),
     );
@@ -174,16 +182,43 @@ class _ScanMedicineBarcodeDialogState extends State<ScanMedicineBarcodeDialog> {
                   children: [
                     Icon(Icons.info_outline, color: Colors.blue.shade800, size: 20),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'امسح الباركود المطبوع على علبة الدواء التابعة للشركة باستخدام القارئ اليدوي أو أدخله يدويًا للربط المباشر والاستغناء عن طباعة الملصقات.',
-                        style: TextStyle(fontSize: 12, height: 1.4),
+                        'امسح الباركود المطبوع على علبة الدواء التابعة للشركة باستخدام القارئ اليدوي أو أدخله يدويًا للربط المباشر والاستغناء عن طباعة الملصقات.\nالباركود المدخل سيصبح الباركود الأساسي للصنف في المخزون وعند البيع.',
+                        style: const TextStyle(fontSize: 12, height: 1.4),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
+              // بيانات الشركة والمورد
+              if (widget.companyName != null || widget.supplierName != null)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      if (widget.companyName != null) ...[
+                        const Icon(Icons.business, size: 16, color: Colors.teal),
+                        const SizedBox(width: 4),
+                        Text('الشركة: ${widget.companyName}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 16),
+                      ],
+                      if (widget.supplierName != null) ...[
+                        const Icon(Icons.local_shipping, size: 16, color: Colors.orange),
+                        const SizedBox(width: 4),
+                        Text('المورد: ${widget.supplierName}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ],
+                  ),
+                ),
 
               // الباركود الحالي
               if (widget.currentBarcode.isNotEmpty) ...[
@@ -236,7 +271,11 @@ class _ScanMedicineBarcodeDialogState extends State<ScanMedicineBarcodeDialog> {
                   fillColor: Colors.white,
                 ),
                 onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _handleSave(),
+                onSubmitted: (_) {
+                  // Barcode scanners often send an Enter key at the end.
+                  // We don't auto-save here, so the user can see the preview and confirm manually.
+                  setState(() {});
+                },
               ),
 
               if (_errorMessage != null) ...[

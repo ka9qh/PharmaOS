@@ -218,6 +218,17 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_log (
 );
 
 -- ============================================================
+-- Safe Migrations for Existing Tables (To prevent 42703 column missing errors)
+-- ============================================================
+ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS branch_activation_key VARCHAR(50);
+ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS branch_device_fingerprint VARCHAR(255);
+ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ;
+
+ALTER TABLE public.cloud_stream_frames ADD COLUMN IF NOT EXISTS channel VARCHAR(50);
+ALTER TABLE public.owner_chat_messages ADD COLUMN IF NOT EXISTS device_id VARCHAR(100);
+ALTER TABLE public.remote_commands ADD COLUMN IF NOT EXISTS device_id VARCHAR(100);
+
+-- ============================================================
 -- مؤشرات الأداء السريع (Indexes)
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_medicines_pharmacy ON public.cloud_medicines(pharmacy_id);
