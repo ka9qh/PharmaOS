@@ -145,6 +145,8 @@ class CartItemRow extends StatelessWidget {
     final preg = MedicineClinicalHelper.getPregnancySafety(medicineName: item.medicineName);
     final card = MedicineClinicalHelper.getCardiacSafety(medicineName: item.medicineName);
 
+    const cellBorder = Border(left: BorderSide(color: Color(0xFFE2E8F0), width: 1));
+
     return InkWell(
       onTap: onSelect,
       child: Container(
@@ -159,22 +161,26 @@ class CartItemRow extends StatelessWidget {
                 : BorderSide.none,
           ),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        padding: EdgeInsets.zero,
         child: Row(
           children: [
             // 1. الترقيم (#)
-            SizedBox(
-              width: 40,
+            Container(
+              width: 45,
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
               child: Text(
                 '${index + 1}',
                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 12),
-                textAlign: TextAlign.center,
               ),
             ),
 
             // 2. اسم الدواء والتركيب السريري
-            SizedBox(
-              width: 250,
+            Container(
+              width: 260,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              decoration: const BoxDecoration(border: cellBorder),
               child: InkWell(
                 onTap: () => MedicineClinicalDetailsDialog.show(
                   context,
@@ -227,9 +233,32 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 3. الوحدة المحددة
-            SizedBox(
+            // 3. المورد / الوكيل
+            Container(
+              width: 130,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
+              child: Text(
+                item.supplierName != null && item.supplierName!.isNotEmpty
+                    ? item.supplierName!
+                    : (item.companyName != null && item.companyName!.isNotEmpty ? item.companyName! : '-'),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.purple.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+            // 4. الوحدة المحددة
+            Container(
               width: 100,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
               child: InkWell(
                 onTap: onUnitChangeRequested,
                 borderRadius: BorderRadius.circular(8),
@@ -259,9 +288,12 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 4. سعر الوحدة ✏️
-            SizedBox(
+            // 5. سعر الوحدة ✏️
+            Container(
               width: 110,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
               child: InkWell(
                 onTap: () => _showEditPriceDialog(context),
                 borderRadius: BorderRadius.circular(6),
@@ -288,9 +320,12 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 5. الكمية (+/-)
-            SizedBox(
+            // 6. الكمية (+/-)
+            Container(
               width: 135,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
               child: Container(
                 decoration: BoxDecoration(
                   color: const Color(0xFFF1F5F9),
@@ -330,9 +365,12 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 6. الدفعة / الانتهاء 📅
-            SizedBox(
-              width: 130,
+            // 7. الدفعة / الانتهاء 📅
+            Container(
+              width: 135,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
               child: InkWell(
                 onTap: () => _showEditExpiryDialog(context),
                 borderRadius: BorderRadius.circular(6),
@@ -364,9 +402,12 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 7. الإجمالي
-            SizedBox(
-              width: 110,
+            // 8. الإجمالي
+            Container(
+              width: 115,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
               child: Text(
                 '${item.subtotal.toStringAsFixed(0)} ر.ي',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF059669)),
@@ -374,39 +415,42 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 8. زر تكرار الدواء بوحدة/تاريخ مختلف ➕
-            SizedBox(
+            // 9. زر تكرار الدواء بوحدة/تاريخ مختلف ➕
+            Container(
               width: 110,
-              child: Center(
-                child: InkWell(
-                  onTap: onDuplicateUnitBatch,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.control_point_duplicate_rounded, size: 14, color: Color(0xFF6366F1)),
-                        SizedBox(width: 4),
-                        Text(
-                          'تكرار بوحدة ➕',
-                          style: TextStyle(fontSize: 10, color: Color(0xFF4F46E5), fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
+              child: InkWell(
+                onTap: onDuplicateUnitBatch,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.control_point_duplicate_rounded, size: 14, color: Color(0xFF6366F1)),
+                      SizedBox(width: 4),
+                      Text(
+                        'تكرار بوحدة ➕',
+                        style: TextStyle(fontSize: 10, color: Color(0xFF4F46E5), fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
 
-            // 9. الإجراءات (البدائل والحذف)
-            SizedBox(
-              width: 90,
+            // 10. الإجراءات (البدائل والحذف)
+            Container(
+              width: 110,
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+              alignment: Alignment.center,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

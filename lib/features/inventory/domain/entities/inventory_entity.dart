@@ -1,6 +1,17 @@
+import '../../../medicines/domain/entities/medicines_entity.dart';
+
 class StockSummary {
   final int medicineId;
   final String medicineName;
+  final String? nameEn;
+  final String? nameScientific;
+  final int? categoryId;
+  final String? categoryName;
+  final int? companyId;
+  final String? companyName;
+  final int? supplierId;
+  final String? supplierName;
+  final String unit;
   final int totalQuantity;
   final int reorderLevel;
   final String? formattedQuantity;
@@ -13,10 +24,26 @@ class StockSummary {
   final int? qtyPerPack;
   final int? qtyPerStrip;
   final int? qtyPerCarton;
+  final double? packSellingPrice;
+  final double? packPurchasePrice;
+  final double? stripSellingPrice;
+  final double? stripPurchasePrice;
+  final double? cartonSellingPrice;
+  final double? cartonPurchasePrice;
+  final int medicineType;
 
   const StockSummary({
     required this.medicineId,
     required this.medicineName,
+    this.nameEn,
+    this.nameScientific,
+    this.categoryId,
+    this.categoryName,
+    this.companyId,
+    this.companyName,
+    this.supplierId,
+    this.supplierName,
+    this.unit = 'باكت',
     required this.totalQuantity,
     required this.reorderLevel,
     this.formattedQuantity,
@@ -29,14 +56,64 @@ class StockSummary {
     this.qtyPerPack,
     this.qtyPerStrip,
     this.qtyPerCarton,
+    this.packSellingPrice,
+    this.packPurchasePrice,
+    this.stripSellingPrice,
+    this.stripPurchasePrice,
+    this.cartonSellingPrice,
+    this.cartonPurchasePrice,
+    this.medicineType = 1,
   });
 
   bool get isLow => totalQuantity <= reorderLevel;
 
-  StockSummary copyWith({String? formattedQuantity}) {
+  MedicineEntity toMedicineEntity() {
+    return MedicineEntity(
+      id: medicineId,
+      nameAr: medicineName,
+      nameEn: nameEn,
+      nameScientific: nameScientific,
+      categoryId: categoryId,
+      categoryName: categoryName,
+      companyId: companyId,
+      companyName: companyName,
+      supplierId: supplierId,
+      supplierName: supplierName,
+      sku: barcode,
+      barcode: barcode,
+      unit: unit,
+      purchasePrice: purchasePrice,
+      sellingPrice: sellingPrice,
+      qtyPerPack: qtyPerPack,
+      qtyPerStrip: qtyPerStrip,
+      qtyPerCarton: qtyPerCarton,
+      packPurchasePrice: packPurchasePrice,
+      packSellingPrice: packSellingPrice,
+      stripPurchasePrice: stripPurchasePrice,
+      stripSellingPrice: stripSellingPrice,
+      cartonPurchasePrice: cartonPurchasePrice,
+      cartonSellingPrice: cartonSellingPrice,
+      reorderLevel: reorderLevel,
+      isActive: true,
+      medicineType: medicineType,
+    );
+  }
+
+  StockSummary copyWith({
+    String? formattedQuantity,
+  }) {
     return StockSummary(
       medicineId: medicineId,
       medicineName: medicineName,
+      nameEn: nameEn,
+      nameScientific: nameScientific,
+      categoryId: categoryId,
+      categoryName: categoryName,
+      companyId: companyId,
+      companyName: companyName,
+      supplierId: supplierId,
+      supplierName: supplierName,
+      unit: unit,
       totalQuantity: totalQuantity,
       reorderLevel: reorderLevel,
       formattedQuantity: formattedQuantity ?? this.formattedQuantity,
@@ -49,6 +126,13 @@ class StockSummary {
       qtyPerPack: qtyPerPack,
       qtyPerStrip: qtyPerStrip,
       qtyPerCarton: qtyPerCarton,
+      packSellingPrice: packSellingPrice,
+      packPurchasePrice: packPurchasePrice,
+      stripSellingPrice: stripSellingPrice,
+      stripPurchasePrice: stripPurchasePrice,
+      cartonSellingPrice: cartonSellingPrice,
+      cartonPurchasePrice: cartonPurchasePrice,
+      medicineType: medicineType,
     );
   }
 }

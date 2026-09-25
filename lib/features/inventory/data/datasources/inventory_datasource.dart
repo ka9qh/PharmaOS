@@ -6,6 +6,15 @@ import '../../../accounting/domain/entities/accounting_entities.dart';
 class StockRowData {
   final int medicineId;
   final String medicineName;
+  final String? nameEn;
+  final String? nameScientific;
+  final int? categoryId;
+  final String? categoryName;
+  final int? companyId;
+  final String? companyName;
+  final int? supplierId;
+  final String? supplierName;
+  final String unit;
   final int reorderLevel;
   final int totalQuantity;
   final String barcode;
@@ -17,10 +26,26 @@ class StockRowData {
   final int? qtyPerPack;
   final int? qtyPerStrip;
   final int? qtyPerCarton;
+  final double? packSellingPrice;
+  final double? packPurchasePrice;
+  final double? stripSellingPrice;
+  final double? stripPurchasePrice;
+  final double? cartonSellingPrice;
+  final double? cartonPurchasePrice;
+  final int medicineType;
 
   const StockRowData({
     required this.medicineId,
     required this.medicineName,
+    this.nameEn,
+    this.nameScientific,
+    this.categoryId,
+    this.categoryName,
+    this.companyId,
+    this.companyName,
+    this.supplierId,
+    this.supplierName,
+    this.unit = 'باكت',
     required this.reorderLevel,
     required this.totalQuantity,
     this.barcode = '',
@@ -32,6 +57,13 @@ class StockRowData {
     this.qtyPerPack,
     this.qtyPerStrip,
     this.qtyPerCarton,
+    this.packSellingPrice,
+    this.packPurchasePrice,
+    this.stripSellingPrice,
+    this.stripPurchasePrice,
+    this.cartonSellingPrice,
+    this.cartonPurchasePrice,
+    this.medicineType = 1,
   });
 }
 
@@ -75,36 +107,79 @@ class InventoryDataSourceImpl implements InventoryDataSource {
 
   @override
   Future<List<StockRowData>> getStockOverview() async {
-    // استعلام SQL مباشر (Custom Query)
-    // نجلب الدفعات منفصلة في المخزون
+    // استعلام SQL مباشر شامل لبيانات الأدوية والمخزون والشركات والموردين
     final rows = await _db.customSelect(
-      'SELECT m.id AS medicine_id, m.name_ar AS name_ar, '
+      'SELECT '
+      'm.id AS medicine_id, '
+      'm.name_ar AS name_ar, '
+      'm.name_en AS name_en, '
+      'm.name_scientific AS name_scientific, '
+      'm.category_id AS category_id, '
+      'cat.name AS category_name, '
+      'm.company_id AS company_id, '
+      'c.name AS company_name, '
+      'm.supplier_id AS supplier_id, '
+      's.name AS supplier_name, '
+      'm.unit AS unit, '
       'm.reorder_level AS reorder_level, '
-      'm.barcode AS barcode, m.selling_price AS selling_price, m.purchase_price AS purchase_price, '
-      'm.qty_per_pack AS qty_per_pack, m.qty_per_strip AS qty_per_strip, m.qty_per_carton AS qty_per_carton, '
-      'b.id AS batch_id, b.batch_number AS batch_number, b.expiry_date AS expiry_date, '
+      'm.barcode AS barcode, '
+      'm.selling_price AS selling_price, '
+      'm.purchase_price AS purchase_price, '
+      'm.qty_per_pack AS qty_per_pack, '
+      'm.pack_selling_price AS pack_selling_price, '
+      'm.pack_purchase_price AS pack_purchase_price, '
+      'm.qty_per_strip AS qty_per_strip, '
+      'm.strip_selling_price AS strip_selling_price, '
+      'm.strip_purchase_price AS strip_purchase_price, '
+      'm.qty_per_carton AS qty_per_carton, '
+      'm.carton_selling_price AS carton_selling_price, '
+      'm.carton_purchase_price AS carton_purchase_price, '
+      'm.medicine_type AS medicine_type, '
+      'b.id AS batch_id, '
+      'b.batch_number AS batch_number, '
+      'b.expiry_date AS expiry_date, '
       'b.quantity AS total_quantity '
-      'FROM medicines m INNER JOIN batches b ON b.medicine_id = m.id '
+      'FROM medicines m '
+      'INNER JOIN batches b ON b.medicine_id = m.id '
+      'LEFT JOIN companies c ON m.company_id = c.id '
+      'LEFT JOIN suppliers s ON m.supplier_id = s.id '
+      'LEFT JOIN categories cat ON m.category_id = cat.id '
       'WHERE m.is_active = 1 AND b.quantity > 0 '
       'ORDER BY m.name_ar ASC, b.expiry_date ASC',
-      readsFrom: {_db.medicines, _db.batches},
+      readsFrom: {_db.medicines, _db.batches, _db.companies, _db.suppliers, _db.categories},
     ).get();
 
     return rows
         .map((row) => StockRowData(
               medicineId: row.read<int>('medicine_id'),
               medicineName: row.read<String>('name_ar'),
+              nameEn: row.read<String?>('name_en'),
+              nameScientific: row.read<String?>('name_scientific'),
+              categoryId: row.read<int?>('category_id'),
+              categoryName: row.read<String?>('category_name'),
+              companyId: row.read<int?>('company_id'),
+              companyName: row.read<String?>('company_name'),
+              supplierId: row.read<int?>('supplier_id'),
+              supplierName: row.read<String?>('supplier_name'),
+              unit: row.read<String?>('unit') ?? 'باكت',
               reorderLevel: row.read<int>('reorder_level'),
               totalQuantity: row.read<int>('total_quantity'),
-              barcode: row.read<String>('barcode'),
+              barcode: row.read<String?>('barcode') ?? '',
               sellingPrice: row.read<double>('selling_price'),
               purchasePrice: row.read<double>('purchase_price'),
               batchId: row.read<int?>('batch_id'),
               batchNumber: row.read<String?>('batch_number'),
               expiryDate: row.read<DateTime?>('expiry_date'),
               qtyPerPack: row.read<int?>('qty_per_pack'),
+              packSellingPrice: row.read<double?>('pack_selling_price'),
+              packPurchasePrice: row.read<double?>('pack_purchase_price'),
               qtyPerStrip: row.read<int?>('qty_per_strip'),
+              stripSellingPrice: row.read<double?>('strip_selling_price'),
+              stripPurchasePrice: row.read<double?>('strip_purchase_price'),
               qtyPerCarton: row.read<int?>('qty_per_carton'),
+              cartonSellingPrice: row.read<double?>('carton_selling_price'),
+              cartonPurchasePrice: row.read<double?>('carton_purchase_price'),
+              medicineType: row.read<int?>('medicine_type') ?? 1,
             ))
         .toList();
   }
@@ -269,7 +344,7 @@ class InventoryDataSourceImpl implements InventoryDataSource {
           quantity: Value(batch.quantity - takeFromBatch),
         ));
 
-        totalLostCost += (takeFromBatch * batch.purchasePrice!);
+        totalLostCost += (takeFromBatch * batch.purchasePrice);
         remainingToDeduct -= takeFromBatch;
       }
 

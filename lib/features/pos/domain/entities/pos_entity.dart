@@ -4,6 +4,8 @@
 class CartItem {
   final int medicineId;
   final String medicineName;
+  final String? supplierName;
+  final String? companyName;
   final double unitPrice; // السعر الدقيق للوحدة المحددة (حبة، شريط، باكت)
   final int availableStockInBase;
   
@@ -17,6 +19,8 @@ class CartItem {
   const CartItem({
     required this.medicineId,
     required this.medicineName,
+    this.supplierName,
+    this.companyName,
     required this.unitPrice,
     required this.availableStockInBase,
     required this.selectedUnitName,
@@ -38,10 +42,14 @@ class CartItem {
     String? batchNumber,
     DateTime? expiryDate,
     int? batchId,
+    String? supplierName,
+    String? companyName,
   }) {
     return CartItem(
       medicineId: medicineId,
       medicineName: medicineName,
+      supplierName: supplierName ?? this.supplierName,
+      companyName: companyName ?? this.companyName,
       unitPrice: unitPrice ?? this.unitPrice,
       availableStockInBase: availableStockInBase,
       selectedUnitName: selectedUnitName ?? this.selectedUnitName,

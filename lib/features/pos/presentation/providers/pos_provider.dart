@@ -265,6 +265,8 @@ class PosNotifier extends Notifier<PosCartState> {
         CartItem(
           medicineId: medicine.id,
           medicineName: medicine.nameAr,
+          supplierName: medicine.supplierName,
+          companyName: medicine.companyName,
           unitPrice: explicitUnitPrice ?? medicine.sellingPrice,
           availableStockInBase: available,
           selectedUnitName: unitName,
@@ -422,6 +424,8 @@ class PosNotifier extends Notifier<PosCartState> {
     updatedItems[index] = CartItem(
       medicineId: newMedicine.id,
       medicineName: newMedicine.nameAr,
+      supplierName: newMedicine.supplierName,
+      companyName: newMedicine.companyName,
       unitPrice: unitPrice,
       availableStockInBase: available,
       selectedUnitName: unitName,

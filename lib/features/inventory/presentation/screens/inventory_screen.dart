@@ -1,5 +1,5 @@
 // شاشة نظرة عامة على المخزون (أدوية الصيدلية المتوفرة فعلياً)
-// تشمل: البحث الفوري، الحساب الهرمي للكميات، طباعة الباركود، وإضافة أدوية للمخزون
+// تشمل: البحث الفوري، الحساب الهرمي للكميات، طباعة الباركود، إضافة أدوية للمخزون، وعرض جدولي وبطاقات تفاعلية سريعة
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,14 +8,12 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../providers/inventory_provider.dart';
 import '../widgets/inventory_widget.dart';
 import '../widgets/receive_stock_dialog.dart';
-import '../../../medicines/presentation/providers/medicines_provider.dart';
-import '../../../../core/di/service_locator.dart';
-import '../../../../core/services/medicine_units_service.dart';
-import '../../../../core/hardware/label_printer_service.dart';
-import '../../../../core/hardware/label_printer_service.dart';
-import '../../../barcode/presentation/widgets/barcode_widget.dart';
+import '../../../barcode/presentation/widgets/scan_medicine_barcode_dialog.dart';
 import '../../domain/entities/inventory_entity.dart';
 import '../../../../core/security/role_guard.dart';
+import '../../../../core/di/service_locator.dart';
+import '../../../medicines/domain/repositories/medicines_repository.dart';
+import '../../../medicines/presentation/providers/medicines_provider.dart';
 import '../../../medicines/presentation/screens/medicine_form_screen.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -27,6 +25,7 @@ class InventoryScreen extends ConsumerStatefulWidget {
 
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   final _searchController = TextEditingController();
+  bool _isTableView = true;
 
   @override
   void dispose() {
@@ -51,7 +50,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       onGranted: () {
         final qtyController = TextEditingController();
         final reasonController = TextEditingController(text: 'تالف/منتهي الصلاحية');
-        
+
         showDialog(
           context: context,
           builder: (ctx) => Directionality(
@@ -75,7 +74,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     controller: qtyController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'الكمية المراد إتلافها',
+                      labelText: 'الكمية المراد إتلافها (بالحبة)',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -100,7 +99,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   onPressed: () async {
                     final qty = int.tryParse(qtyController.text) ?? 0;
                     final reason = reasonController.text.trim();
-                    
+
                     if (qty <= 0 || qty > stock.totalQuantity) {
                       ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('كمية غير صالحة')));
                       return;
@@ -109,13 +108,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('الرجاء إدخال السبب')));
                       return;
                     }
-                    
+
                     final success = await ref.read(inventoryNotifierProvider.notifier).writeOffStock(
-                      medicineId: stock.medicineId,
-                      quantity: qty,
-                      reason: reason,
-                    );
-                    
+                          medicineId: stock.medicineId,
+                          quantity: qty,
+                          reason: reason,
+                        );
+
                     if (context.mounted) {
                       Navigator.pop(ctx);
                       if (success) {
@@ -203,97 +202,44 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Future<void> _showBarcodeDialog(BuildContext context, StockSummary stock) async {
-    final medicines = ref.read(medicinesNotifierProvider).items;
-    final medicine = medicines.where((m) => m.id == stock.medicineId).firstOrNull;
-    if (medicine == null) return;
-
-    // حساب عدد النسخ الافتراضي: الكمية الكلية مقسومة على معامل الباكت
-    int defaultCopies = 1;
-    if (stock.totalQuantity > 0) {
-      final units = await sl<MedicineUnitsService>().getUnits(medicine.id);
-      final packUnit = units.where((u) => u.levelOrder == 2).firstOrNull;
-      if (packUnit != null && packUnit.multiplier > 0) {
-        defaultCopies = stock.totalQuantity ~/ packUnit.multiplier;
-        if (defaultCopies == 0) defaultCopies = 1;
-      } else {
-        defaultCopies = stock.totalQuantity;
-      }
-    }
-
-    final copiesController = TextEditingController(text: defaultCopies.toString());
-
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.qr_code_2, color: Colors.teal),
-            const SizedBox(width: 8),
-            Expanded(child: Text('طباعة باركود المخزون: ${medicine.nameAr}')),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            BarcodeLabelPreview(
-              barcodeValue: medicine.barcode,
-              medicineName: medicine.nameAr,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'تم حساب عدد النسخ افتراضياً بناءً على عدد العبوات/البواكت المتوفرة في المخزون.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: copiesController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'عدد النسخ (ملصقات الباركود)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.print),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton.icon(
-            icon: const Icon(Icons.print),
-            label: const Text('طباعة'),
-            onPressed: () async {
-              final copies = int.tryParse(copiesController.text) ?? 1;
-              for (int i = 0; i < copies; i++) {
-                await LabelPrinterService.printMedicineLabel(
-                  medicineName: medicine.nameAr,
-                  barcodeValue: medicine.barcode,
-                  price: medicine.sellingPrice,
-                );
-              }
-              if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('تم إرسال $copies ملصق باركود للطباعة')),
-                );
-              }
-            },
-          ),
-        ],
-      ),
+    await ScanMedicineBarcodeDialog.show(
+      context,
+      medicineId: stock.medicineId,
+      medicineName: stock.medicineName,
+      currentBarcode: stock.barcode,
+      sellingPrice: stock.packSellingPrice ?? stock.sellingPrice,
+      onBarcodeSaved: (newBarcode) async {
+        final medRepo = sl<MedicinesRepository>();
+        final med = await medRepo.getById(stock.medicineId);
+        if (med != null) {
+          final updated = med.copyWith(barcode: newBarcode);
+          final ok = await ref.read(medicinesNotifierProvider.notifier).updateMedicine(updated);
+          if (ok) {
+            await ref.read(inventoryNotifierProvider.notifier).loadAll();
+            return true;
+          }
+        }
+        return false;
+      },
     );
+  }
+
+  void _openEditMedicine(StockSummary stock) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MedicineFormScreen(existing: stock.toMedicineEntity()),
+      ),
+    ).then((_) {
+      ref.read(inventoryNotifierProvider.notifier).loadAll();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(inventoryNotifierProvider);
     final totalItemsCount = state.items.length;
-    final lowStockCount = state.items.where((s) => s.totalQuantity <= 10).length;
+    final lowStockCount = state.items.where((s) => s.isLow).length;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -389,6 +335,29 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ],
                           ),
                         ),
+                      const Spacer(),
+                      // زر التبديل بين العرض الجدولي وعرض البطاقات
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.table_chart, color: _isTableView ? Colors.blue.shade900 : Colors.grey),
+                              tooltip: 'جدول تفصيلي',
+                              onPressed: () => setState(() => _isTableView = true),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.view_agenda_outlined, color: !_isTableView ? Colors.blue.shade900 : Colors.grey),
+                              tooltip: 'بطاقات سريعة',
+                              onPressed: () => setState(() => _isTableView = false),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -420,238 +389,263 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ],
                           ),
                         )
-                      : SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: 1700, // العرض الكلي للجدول
-                            child: Column(
-                              children: [
-                                // رأس الجدول
-                                Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade900,
-                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                                  ),
-                                  child: const Row(
-                                    children: [
-                                      SizedBox(width: 120, child: Text('رقم/باركود الصنف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 200, child: Text('اسم الدواء', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 150, child: Text('الاسم الإنجليزي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 150, child: Text('الاسم العلمي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 120, child: Text('الشركة المصنعة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 120, child: Text('المورد / الوكيل', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 100, child: Text('التعبئة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 90, child: Text('سعر الباكت', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 90, child: Text('سعر الشريط', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 90, child: Text('سعر الحبة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 90, child: Text('تاريخ الانتهاء', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      SizedBox(width: 90, child: Text('الرصيد الفعلي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                      Expanded(child: Text('إجراءات', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                    ],
-                                  ),
-                                ),
-                                // بيانات الجدول
-                                Expanded(
-                                  child: Container(
-                                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      border: Border.all(color: Colors.grey.shade300),
-                                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                                      boxShadow: [
-                                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
-                                      ],
-                                    ),
-                                    child: ListView.separated(
-                                      itemCount: state.items.length,
-                                      separatorBuilder: (ctx, idx) => const Divider(height: 1),
-                                      itemBuilder: (context, index) {
-                                        final stock = state.items[index];
-                                        final allMedicines = ref.read(medicinesNotifierProvider).items;
-                                        final medEntity = allMedicines.where((m) => m.id == stock.medicineId).firstOrNull;
-                                        final packStr = medEntity?.qtyPerPack != null && medEntity!.qtyPerPack! > 0 ? '${medEntity.qtyPerPack} باكت' : '';
-                                        final stripStr = medEntity?.qtyPerStrip != null && medEntity!.qtyPerStrip! > 0 ? '${medEntity.qtyPerStrip} شريط' : '';
-                                        final packing = [packStr, stripStr].where((s) => s.isNotEmpty).join(' / ');
-                                        
-                                        String detailedQty = '${stock.totalQuantity}';
-                                        if (medEntity != null) {
-                                          final qStrip = medEntity.qtyPerStrip ?? 1;
-                                          final qPack = medEntity.qtyPerPack ?? 1;
-                                          
-                                          if (qStrip > 0 && qPack > 0) {
-                                            final pillsPerPack = qPack * qStrip;
-                                            final packs = stock.totalQuantity ~/ pillsPerPack;
-                                            final remainingAfterPack = stock.totalQuantity % pillsPerPack;
-                                            final strips = remainingAfterPack ~/ qStrip;
-                                            final pills = remainingAfterPack % qStrip;
-                                            
-                                            List<String> parts = [];
-                                            if (packs > 0) parts.add('$packs باكت');
-                                            if (strips > 0) parts.add('$strips شريط');
-                                            if (pills > 0 || (packs == 0 && strips == 0)) parts.add('$pills حبة');
-                                            
-                                            detailedQty = parts.join(' و ');
-                                          }
-                                        }
-                                        
-                                        final expiryDateStr = stock.expiryDate != null ? DateFormat('yyyy-MM-dd').format(stock.expiryDate!) : '-';
-                                        
-                                        return InkWell(
-                                          onTap: () {
-                                            if (medEntity != null) {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => MedicineFormScreen(existing: medEntity),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                            child: Row(
-                                              children: [
-                                                SizedBox(
-                                                  width: 120,
-                                                  child: Text(
-                                                    stock.barcode.isNotEmpty ? stock.barcode : '${stock.medicineId}',
-                                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
-                                                  ),
-                                                ),
-                                                SizedBox(
-                                                  width: 200,
-                                                  child: Row(
-                                                    children: [
-                                                      if (stock.isLow)
-                                                        const Padding(
-                                                          padding: EdgeInsets.only(left: 4),
-                                                          child: Icon(Icons.warning_amber_rounded, color: Colors.red, size: 16),
-                                                        ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          stock.medicineName,
-                                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: stock.isLow ? Colors.red : Colors.black87),
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                SizedBox(
-                                                  width: 150,
-                                                  child: Text(medEntity?.nameEn ?? '-', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                                                ),
-                                                SizedBox(
-                                                  width: 150,
-                                                  child: Text(medEntity?.nameScientific ?? '-', style: const TextStyle(fontSize: 12, color: Colors.teal), overflow: TextOverflow.ellipsis),
-                                                ),
-                                                SizedBox(
-                                                  width: 120,
-                                                  child: Text(medEntity?.companyName ?? '-', style: const TextStyle(fontSize: 12, color: Colors.indigo), overflow: TextOverflow.ellipsis),
-                                                ),
-                                                SizedBox(
-                                                  width: 120,
-                                                  child: Text(medEntity?.supplierName ?? '-', style: const TextStyle(fontSize: 12, color: Colors.purple), overflow: TextOverflow.ellipsis),
-                                                ),
-                                                SizedBox(
-                                                  width: 100,
-                                                  child: Text(packing.isNotEmpty ? packing : (medEntity?.unit ?? 'باكت'), style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                                                ),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Text('${medEntity?.packSellingPrice?.toStringAsFixed(0) ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 13)),
-                                                ),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Text('${medEntity?.stripSellingPrice?.toStringAsFixed(0) ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal, fontSize: 13)),
-                                                ),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Text('${stock.sellingPrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
-                                                ),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Text(expiryDateStr, style: TextStyle(color: stock.expiryDate != null && stock.expiryDate!.isBefore(DateTime.now()) ? Colors.red : Colors.black87, fontSize: 12)),
-                                                ),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                    decoration: BoxDecoration(
-                                                      color: stock.isLow ? Colors.red.shade50 : Colors.blue.shade50,
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      detailedQty,
-                                                      style: TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        color: stock.isLow ? Colors.red.shade900 : Colors.blue.shade900,
-                                                      ),
-                                                      textAlign: TextAlign.center,
-                                                    ),
-                                                  ),
-                                                ),
-                                                Expanded(
-                                                  child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      IconButton(
-                                                        icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
-                                                        tooltip: 'تعديل الصنف',
-                                                        onPressed: () {
-                                                          if (medEntity != null) {
-                                                            Navigator.push(
-                                                              context,
-                                                              MaterialPageRoute(
-                                                                builder: (_) => MedicineFormScreen(existing: medEntity),
-                                                              ),
-                                                            );
-                                                          }
-                                                        },
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      IconButton(
-                                                        icon: const Icon(Icons.qr_code, size: 20),
-                                                        tooltip: 'طباعة الباركود',
-                                                        onPressed: () => _showBarcodeDialog(context, stock),
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      IconButton(
-                                                        icon: const Icon(Icons.add_box_outlined, size: 20, color: Colors.green),
-                                                        tooltip: 'إضافة كمية للمخزون',
-                                                        onPressed: () => _showReceiveStockDialog(context, stock.medicineId),
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      IconButton(
-                                                        icon: const Icon(Icons.delete_forever, size: 20, color: Colors.red),
-                                                        tooltip: 'إزالة من المخزون',
-                                                        onPressed: () => _confirmRemoveFromInventory(context, stock),
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
+                      : _isTableView
+                          ? _buildTableView(state.items)
+                          : _buildCardListView(state.items),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardListView(List<StockSummary> items) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final stock = items[index];
+        return StockCard(
+          stock: stock,
+          onReceiveStock: () => _showReceiveStockDialog(context, stock.medicineId),
+          onPrintBarcode: () => _showBarcodeDialog(context, stock),
+          onWriteOff: () => _showWriteOffDialog(context, stock),
+          onEdit: () => _openEditMedicine(stock),
+          onDeleteBatch: () => _confirmRemoveFromInventory(context, stock),
+        );
+      },
+    );
+  }
+
+  Widget _buildTableView(List<StockSummary> items) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: 1750, // العرض الكلي للجدول
+        child: Column(
+          children: [
+            // رأس الجدول
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade900,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: const Row(
+                children: [
+                  SizedBox(width: 130, child: Text('رقم/باركود الصنف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 200, child: Text('اسم الدواء', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 160, child: Text('الاسم الإنجليزي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 160, child: Text('الاسم العلمي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 130, child: Text('الشركة المصنعة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 130, child: Text('المورد / الوكيل', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 110, child: Text('التعبئة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 95, child: Text('سعر الباكت', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 95, child: Text('سعر الشريط', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 95, child: Text('سعر الحبة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 105, child: Text('تاريخ الانتهاء', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 110, child: Text('الرصيد الفعلي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  Expanded(child: Text('إجراءات', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                ],
+              ),
+            ),
+            // بيانات الجدول
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
+                  ],
+                ),
+                child: ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (ctx, idx) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final stock = items[index];
+
+                    final packStr = stock.qtyPerPack != null && stock.qtyPerPack! > 0 ? '${stock.qtyPerPack} باكت' : '';
+                    final stripStr = stock.qtyPerStrip != null && stock.qtyPerStrip! > 0 ? '${stock.qtyPerStrip} شريط' : '';
+                    final packing = [packStr, stripStr].where((s) => s.isNotEmpty).join(' / ');
+
+                    String detailedQty = '${stock.totalQuantity}';
+                    final qStrip = stock.qtyPerStrip ?? 1;
+                    final qPack = stock.qtyPerPack ?? 1;
+
+                    if (qStrip > 0 && qPack > 0) {
+                      final pillsPerPack = qPack * qStrip;
+                      final packs = stock.totalQuantity ~/ pillsPerPack;
+                      final remainingAfterPack = stock.totalQuantity % pillsPerPack;
+                      final strips = remainingAfterPack ~/ qStrip;
+                      final pills = remainingAfterPack % qStrip;
+
+                      List<String> parts = [];
+                      if (packs > 0) parts.add('$packs باكت');
+                      if (strips > 0) parts.add('$strips شريط');
+                      if (pills > 0 || (packs == 0 && strips == 0)) parts.add('$pills حبة');
+
+                      detailedQty = parts.join(' و ');
+                    }
+
+                    final expiryDateStr = stock.expiryDate != null ? DateFormat('yyyy-MM-dd').format(stock.expiryDate!) : '-';
+                    final isExpired = stock.expiryDate != null && stock.expiryDate!.isBefore(DateTime.now());
+
+                    return InkWell(
+                      onTap: () => _openEditMedicine(stock),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 130,
+                              child: Text(
+                                stock.barcode.isNotEmpty ? stock.barcode : '${stock.medicineId}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+                              ),
                             ),
-                          ),
+                            SizedBox(
+                              width: 200,
+                              child: Row(
+                                children: [
+                                  if (stock.isLow)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 4),
+                                      child: Icon(Icons.warning_amber_rounded, color: Colors.red, size: 16),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      stock.medicineName,
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: stock.isLow ? Colors.red : Colors.black87),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              width: 160,
+                              child: Text(stock.nameEn ?? '-', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                            ),
+                            SizedBox(
+                              width: 160,
+                              child: Text(stock.nameScientific ?? '-', style: const TextStyle(fontSize: 12, color: Colors.teal), overflow: TextOverflow.ellipsis),
+                            ),
+                            SizedBox(
+                              width: 130,
+                              child: Text(stock.companyName ?? '-', style: const TextStyle(fontSize: 12, color: Colors.indigo), overflow: TextOverflow.ellipsis),
+                            ),
+                            SizedBox(
+                              width: 130,
+                              child: Text(stock.supplierName ?? '-', style: const TextStyle(fontSize: 12, color: Colors.purple), overflow: TextOverflow.ellipsis),
+                            ),
+                            SizedBox(
+                              width: 110,
+                              child: Text(packing.isNotEmpty ? packing : stock.unit, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                            ),
+                            SizedBox(
+                              width: 95,
+                              child: Text(
+                                stock.packSellingPrice != null && stock.packSellingPrice! > 0 ? stock.packSellingPrice!.toStringAsFixed(0) : '-',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 13),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 95,
+                              child: Text(
+                                stock.stripSellingPrice != null && stock.stripSellingPrice! > 0 ? stock.stripSellingPrice!.toStringAsFixed(0) : '-',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal, fontSize: 13),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 95,
+                              child: Text(
+                                stock.sellingPrice.toStringAsFixed(0),
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 105,
+                              child: Text(
+                                expiryDateStr,
+                                style: TextStyle(color: isExpired ? Colors.red : Colors.black87, fontSize: 12, fontWeight: isExpired ? FontWeight.bold : FontWeight.normal),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 110,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: stock.isLow ? Colors.red.shade50 : Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  detailedQty,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: stock.isLow ? Colors.red.shade900 : Colors.blue.shade900,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                                    tooltip: 'تعديل الصنف',
+                                    onPressed: () => _openEditMedicine(stock),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.qr_code_scanner, size: 20, color: Colors.teal),
+                                    tooltip: 'قراءة ومسح باركود الشركة',
+                                    onPressed: () => _showBarcodeDialog(context, stock),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.add_box_outlined, size: 20, color: Colors.green),
+                                    tooltip: 'إضافة كمية للمخزون',
+                                    onPressed: () => _showReceiveStockDialog(context, stock.medicineId),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_sweep, size: 20, color: Colors.orange),
+                                    tooltip: 'إتلاف كمية',
+                                    onPressed: () => _showWriteOffDialog(context, stock),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_forever, size: 20, color: Colors.red),
+                                    tooltip: 'إزالة الدفعة من المخزون',
+                                    onPressed: () => _confirmRemoveFromInventory(context, stock),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ],
         ),

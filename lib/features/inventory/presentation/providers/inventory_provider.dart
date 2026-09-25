@@ -65,7 +65,13 @@ class InventoryNotifier extends AutoDisposeNotifier<InventoryState> {
     } else {
       final q = query.trim().toLowerCase();
       final filtered = allItems.where((item) {
-        return item.medicineName.toLowerCase().contains(q);
+        return item.medicineName.toLowerCase().contains(q) ||
+            (item.nameEn?.toLowerCase().contains(q) ?? false) ||
+            (item.nameScientific?.toLowerCase().contains(q) ?? false) ||
+            item.barcode.toLowerCase().contains(q) ||
+            (item.companyName?.toLowerCase().contains(q) ?? false) ||
+            (item.supplierName?.toLowerCase().contains(q) ?? false) ||
+            (item.batchNumber?.toLowerCase().contains(q) ?? false);
       }).toList();
       state = state.copyWith(isLoading: false, items: filtered, allItems: allItems, searchQuery: query);
     }

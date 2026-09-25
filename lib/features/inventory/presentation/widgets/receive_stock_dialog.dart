@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import '../../../../core/di/service_locator.dart';
 import '../../../medicines/presentation/providers/medicines_provider.dart';
 import '../../../medicines/domain/entities/medicines_entity.dart';
-import '../../../medicines/domain/repositories/medicines_repository.dart';
+import '../../../barcode/presentation/widgets/scan_medicine_barcode_dialog.dart';
 import '../providers/inventory_provider.dart';
 
 class ReceiveStockDialog extends ConsumerStatefulWidget {
@@ -350,6 +349,31 @@ class _ReceiveStockDialogState extends ConsumerState<ReceiveStockDialog> {
                                 ],
                               ),
                             ),
+                            IconButton(
+                              icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF2563EB)),
+                              tooltip: 'قراءة ومسح باركود الشركة بالقارئ',
+                              onPressed: () async {
+                                await ScanMedicineBarcodeDialog.show(
+                                  context,
+                                  medicineId: _selectedMedicine!.id,
+                                  medicineName: _selectedMedicine!.nameAr,
+                                  currentBarcode: _selectedMedicine!.barcode,
+                                  sellingPrice: _selectedMedicine!.sellingPrice,
+                                  onBarcodeSaved: (newBarcode) async {
+                                    final updated = _selectedMedicine!.copyWith(barcode: newBarcode);
+                                    final ok = await ref.read(medicinesNotifierProvider.notifier).updateMedicine(updated);
+                                    if (ok) {
+                                      setState(() {
+                                        _selectedMedicine = updated;
+                                      });
+                                      return true;
+                                    }
+                                    return false;
+                                  },
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 4),
                             TextButton.icon(
                               icon: const Icon(Icons.change_circle_outlined),
                               label: const Text('تغيير'),

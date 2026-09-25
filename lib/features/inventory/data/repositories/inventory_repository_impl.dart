@@ -17,6 +17,15 @@ class InventoryRepositoryImpl implements InventoryRepository {
         .map((r) => StockSummary(
               medicineId: r.medicineId,
               medicineName: r.medicineName,
+              nameEn: r.nameEn,
+              nameScientific: r.nameScientific,
+              categoryId: r.categoryId,
+              categoryName: r.categoryName,
+              companyId: r.companyId,
+              companyName: r.companyName,
+              supplierId: r.supplierId,
+              supplierName: r.supplierName,
+              unit: r.unit,
               totalQuantity: r.totalQuantity,
               reorderLevel: r.reorderLevel,
               barcode: r.barcode,
@@ -28,6 +37,13 @@ class InventoryRepositoryImpl implements InventoryRepository {
               qtyPerPack: r.qtyPerPack,
               qtyPerStrip: r.qtyPerStrip,
               qtyPerCarton: r.qtyPerCarton,
+              packSellingPrice: r.packSellingPrice,
+              packPurchasePrice: r.packPurchasePrice,
+              stripSellingPrice: r.stripSellingPrice,
+              stripPurchasePrice: r.stripPurchasePrice,
+              cartonSellingPrice: r.cartonSellingPrice,
+              cartonPurchasePrice: r.cartonPurchasePrice,
+              medicineType: r.medicineType,
             ))
         .toList();
   }

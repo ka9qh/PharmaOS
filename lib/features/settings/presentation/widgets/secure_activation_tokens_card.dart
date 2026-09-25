@@ -6,6 +6,7 @@ import '../../../../core/licensing/hardware_id_generator.dart';
 import '../../../../core/services/device_branch_manager_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/security/password_hasher.dart';
+import '../../../../core/services/license_service.dart';
 import '../../../settings/domain/repositories/settings_repository.dart';
 
 class SecureActivationTokensCard extends StatefulWidget {
@@ -24,6 +25,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
   String _activationRequestCode = '';
   List<BranchConfig> _branches = [];
   List<DeviceConfig> _devices = [];
+  String _licenseKey = 'LOADING...';
 
   @override
   void initState() {
@@ -41,7 +43,8 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
       final reqCode = await DeviceBranchManagerService.generatePharmacyActivationRequestCode(pName, hwId);
       final branchesList = await DeviceBranchManagerService.getBranches();
       final devicesList = await DeviceBranchManagerService.getDevices();
-
+      final tenantConfig = await LicenseService.getTenantConfig();
+      
       if (mounted) {
         setState(() {
           _pharmacyName = pName;
@@ -49,6 +52,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
           _activationRequestCode = reqCode;
           _branches = branchesList;
           _devices = devicesList;
+          _licenseKey = tenantConfig.licenseKey.isNotEmpty ? tenantConfig.licenseKey : 'غير مرخص';
           _isLoading = false;
         });
       }
@@ -460,7 +464,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
             _buildRevealedCard(
               title: 'حالة الترخيص والتشغيل',
               subtitle: 'الترخيص نشط ومفعل مدى الحياة لهذا الجهاز',
-              value: 'LICENSED-PERPETUAL-ACTIVE-2026',
+              value: _licenseKey,
               icon: Icons.verified_user_rounded,
               color: const Color(0xFF10B981),
             ),

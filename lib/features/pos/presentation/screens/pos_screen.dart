@@ -1015,65 +1015,68 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                           ),
                         ],
                       ),
-                      child: Column(
-                        children: [
-                          _buildCartTableHeader(),
-                          Expanded(
-                            child: Scrollbar(
-                              thumbVisibility: true,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SizedBox(
-                                  width: 1080,
-                                  child: ListView.builder(
-                                    itemCount: state.items.length,
-                                    itemBuilder: (context, index) {
-                                      final item = state.items[index];
-                                      return CartItemRow(
-                                        item: item,
-                                        index: index,
-                                        isSelected: index == _selectedCartIndex,
-                                        onSelect: () {
-                                          setState(() => _selectedCartIndex = index);
-                                        },
-                                        onQuantityChanged: (q) => ref
-                                            .read(posNotifierProvider.notifier)
-                                            .updateQuantity(item.medicineId, item.selectedUnitMultiplier, q),
-                                        onPriceChanged: (p) => ref
-                                            .read(posNotifierProvider.notifier)
-                                            .updateItemPrice(item.medicineId, item.selectedUnitMultiplier, p),
-                                        onBatchChanged: (batchId, expiryDate) => ref
-                                            .read(posNotifierProvider.notifier)
-                                            .updateCartItemBatch(item.medicineId, item.selectedUnitMultiplier, batchId, expiryDate),
-                                        onRemove: () {
-                                          ref
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: SizedBox(
+                              width: 1250,
+                              child: Column(
+                                children: [
+                                  _buildCartTableHeader(),
+                                  Expanded(
+                                    child: ListView.builder(
+                                      itemCount: state.items.length,
+                                      itemBuilder: (context, index) {
+                                        final item = state.items[index];
+                                        return CartItemRow(
+                                          item: item,
+                                          index: index,
+                                          isSelected: index == _selectedCartIndex,
+                                          onSelect: () {
+                                            setState(() => _selectedCartIndex = index);
+                                          },
+                                          onQuantityChanged: (q) => ref
                                               .read(posNotifierProvider.notifier)
-                                              .removeItem(item.medicineId, item.selectedUnitMultiplier);
-                                        },
-                                        onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
-                                        onFindAlternatives: () => _showAlternativesDialog(context, item),
-                                        onDuplicateUnitBatch: () async {
-                                          final medRepo = sl<MedicinesRepository>();
-                                          final medicine = await medRepo.getById(item.medicineId);
-                                          if (medicine != null && mounted) {
-                                            await showManualAddToCartDialog(
-                                              context,
-                                              initialMedicine: medicine,
-                                              onAdd: (med, qty, unitName, multiplier, unitPrice) {
-                                                ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
-                                                _barcodeFocusNode.requestFocus();
-                                              },
-                                            );
-                                          }
-                                        },
-                                      );
-                                    },
+                                              .updateQuantity(item.medicineId, item.selectedUnitMultiplier, q),
+                                          onPriceChanged: (p) => ref
+                                              .read(posNotifierProvider.notifier)
+                                              .updateItemPrice(item.medicineId, item.selectedUnitMultiplier, p),
+                                          onBatchChanged: (batchId, expiryDate) => ref
+                                              .read(posNotifierProvider.notifier)
+                                              .updateCartItemBatch(item.medicineId, item.selectedUnitMultiplier, batchId, expiryDate),
+                                          onRemove: () {
+                                            ref
+                                                .read(posNotifierProvider.notifier)
+                                                .removeItem(item.medicineId, item.selectedUnitMultiplier);
+                                          },
+                                          onUnitChangeRequested: () => _showUnitChangeDialog(context, ref, item),
+                                          onFindAlternatives: () => _showAlternativesDialog(context, item),
+                                          onDuplicateUnitBatch: () async {
+                                            final medRepo = sl<MedicinesRepository>();
+                                            final medicine = await medRepo.getById(item.medicineId);
+                                            if (medicine != null && mounted) {
+                                              await showManualAddToCartDialog(
+                                                context,
+                                                initialMedicine: medicine,
+                                                onAdd: (med, qty, unitName, multiplier, unitPrice) {
+                                                  ref.read(posNotifierProvider.notifier).addMedicineWithQuantity(med, qty, unitName, multiplier, unitPrice);
+                                                  _barcodeFocusNode.requestFocus();
+                                                },
+                                              );
+                                            }
+                                          },
+                                        );
+                                      },
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
             ),
@@ -1103,23 +1106,84 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   }
 
   Widget _buildCartTableHeader() {
+    const headerBorder = Border(left: BorderSide(color: Color(0xFF334155), width: 1));
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF1E293B),
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-      child: const Row(
+      padding: EdgeInsets.zero,
+      child: Row(
         children: [
-          SizedBox(width: 40, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 240, child: Text('اسم الدواء والتركيب', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 100, child: Text('الوحدة', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 110, child: Text('سعر الوحدة ✏️', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 135, child: Text('الكمية (+/-)', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 130, child: Text('الانتهاء / الدفعة 📅', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 110, child: Text('الإجمالي', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
-          SizedBox(width: 110, child: Text('تكرار بوحدة ➕', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF818CF8), fontSize: 12))),
-          SizedBox(width: 90, child: Text('الإجراءات والبدائل', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12))),
+          Container(
+            width: 45,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 260,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.centerRight,
+            child: Text('اسم الدواء والتركيب', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 130,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('المورد / الوكيل', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE2E8F0), fontSize: 12)),
+          ),
+          Container(
+            width: 100,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('الوحدة', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 110,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('سعر الوحدة ✏️', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 135,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('الكمية (+/-)', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 135,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('الانتهاء / الدفعة 📅', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 115,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('الإجمالي', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
+          Container(
+            width: 110,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            decoration: BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: Text('تكرار بوحدة ➕', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF818CF8), fontSize: 12)),
+          ),
+          Container(
+            width: 110,
+            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            alignment: Alignment.center,
+            child: Text('الإجراءات والبدائل', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+          ),
         ],
       ),
     );
