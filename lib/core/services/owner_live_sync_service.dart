@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 import 'package:drift/drift.dart' as drift;
+import 'package:camera/camera.dart';
 
 import '../database/app_database.dart';
 import '../di/service_locator.dart';
@@ -23,6 +24,7 @@ class OwnerLiveSyncService {
   static Timer? _pollingTimer;
   static Timer? _screenStreamTimer;
   static Timer? _cameraStreamTimer;
+  static CameraController? _cameraController;
 
   static bool isScreenStreamingActive = false;
   static bool isCameraStreamingActive = false;
@@ -50,6 +52,8 @@ class OwnerLiveSyncService {
     _cameraStreamTimer?.cancel();
     isScreenStreamingActive = false;
     isCameraStreamingActive = false;
+    _cameraController?.dispose();
+    _cameraController = null;
   }
 
   static Map<String, String> _headers(String apiKey) => {
@@ -461,13 +465,33 @@ class OwnerLiveSyncService {
     _screenStreamTimer?.cancel();
   }
 
+  /// تهيئة كاميرا النظام
+  static Future<void> _initCamera() async {
+    if (_cameraController != null && _cameraController!.value.isInitialized) return;
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        _cameraController = CameraController(
+          cameras.first,
+          ResolutionPreset.low,
+          enableAudio: false,
+        );
+        await _cameraController!.initialize();
+      }
+    } catch (e) {
+      debugPrint('Camera initialization error: $e');
+    }
+  }
+
   /// بدء بث فيديو مباشر لكاميرا المراقبة (Live Camera CCTV)
-  static void startCameraLiveStream() {
+  static void startCameraLiveStream() async {
     if (isCameraStreamingActive) return;
     isCameraStreamingActive = true;
 
+    await _initCamera();
+
     _cameraStreamTimer?.cancel();
-    _cameraStreamTimer = Timer.periodic(const Duration(milliseconds: 800), (_) async {
+    _cameraStreamTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
       if (!isCameraStreamingActive) return;
       await _captureAndBroadcastFrame('camera');
     });
@@ -476,6 +500,8 @@ class OwnerLiveSyncService {
   static void stopCameraLiveStream() {
     isCameraStreamingActive = false;
     _cameraStreamTimer?.cancel();
+    _cameraController?.dispose();
+    _cameraController = null;
   }
 
   /// التقاط إطار وبثه سحابياً للمدير
@@ -500,8 +526,18 @@ class OwnerLiveSyncService {
           frameBase64 = await _renderScreenPlaceholderPng(tenantConfig.pharmacyName, tenantConfig.branchId);
         }
       } else {
-        // كاميرا المراقبة CCTV: توليد إطار نقي وفائق الجودة مع توقيت حي واسم الفرع بصيغة PNG صالحة
-        frameBase64 = await _renderCctvFrameToPng(tenantConfig.pharmacyName, tenantConfig.branchId);
+        // كاميرا المراقبة CCTV: التقاط حقيقي إذا كانت الكاميرا مهيأة، أو محاكاة
+        if (_cameraController != null && _cameraController!.value.isInitialized) {
+          try {
+            final XFile file = await _cameraController!.takePicture();
+            final bytes = await file.readAsBytes();
+            frameBase64 = base64Encode(bytes);
+          } catch(e) {
+            frameBase64 = await _renderCctvFrameToPng(tenantConfig.pharmacyName, tenantConfig.branchId);
+          }
+        } else {
+          frameBase64 = await _renderCctvFrameToPng(tenantConfig.pharmacyName, tenantConfig.branchId);
+        }
       }
 
       if (frameBase64.isNotEmpty) {
