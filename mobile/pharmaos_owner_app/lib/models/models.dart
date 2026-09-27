@@ -157,17 +157,22 @@ class CloudSupplier {
   final int id;
   final int pharmacyId;
   final String name;
-  final String? contactInfo;
-  final String? notes;
-  final bool isActive;
+  final String? phone;
+  final String? companyName;
+  final double balance;
+
+  // Compatibility helpers for screens and backward compatibility
+  String? get contactInfo => phone;
+  String? get notes => companyName;
+  bool get isActive => true;
 
   CloudSupplier({
     required this.id,
     required this.pharmacyId,
     required this.name,
-    this.contactInfo,
-    this.notes,
-    this.isActive = true,
+    this.phone,
+    this.companyName,
+    this.balance = 0.0,
   });
 
   factory CloudSupplier.fromJson(Map<String, dynamic> json) {
@@ -175,9 +180,9 @@ class CloudSupplier {
       id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
       name: json['name'] ?? '',
-      contactInfo: json['contact_info'],
-      notes: json['notes'],
-      isActive: json['is_active'] ?? true,
+      phone: json['phone']?.toString() ?? json['contact_info']?.toString(),
+      companyName: json['company_name']?.toString() ?? json['notes']?.toString(),
+      balance: (json['balance'] != null) ? (double.tryParse(json['balance'].toString()) ?? 0.0) : 0.0,
     );
   }
 }
@@ -203,10 +208,12 @@ class CloudBackupRecord {
     return CloudBackupRecord(
       id: json['id']?.toString() ?? 'bk-${DateTime.now().millisecondsSinceEpoch}',
       fileName: json['file_name'] ?? 'PharmaOS_Backup.pharmaos_backup',
-      fileSize: json['file_size'] is int ? json['file_size'] : int.tryParse(json['file_size']?.toString() ?? '0') ?? 0,
+      fileSize: json['file_size_bytes'] is int
+          ? json['file_size_bytes']
+          : int.tryParse(json['file_size_bytes']?.toString() ?? json['file_size']?.toString() ?? '0') ?? 0,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
-      type: json['type'] ?? 'cloud',
-      summaryText: json['summary_text'] ?? 'نسخة احتياطية شاملة مشفرة',
+      type: json['backup_source'] ?? json['type'] ?? 'cloud',
+      summaryText: json['trigger_reason'] ?? json['summary_text'] ?? 'نسخة احتياطية شاملة مشفرة',
     );
   }
 }

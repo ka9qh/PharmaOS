@@ -1,4 +1,4 @@
-// شاشة تسجيل الدخول برمز التفعيل الشامل للصيدلية - PharmaOS Owner App
+// شاشة تسجيل الدخول والربط السحابي بمسح الباركود - PharmaOS Owner App
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/owner_api_service.dart';
@@ -15,9 +15,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _keyController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  String _statusText = '';
 
   @override
   void initState() {
@@ -28,6 +28,15 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _checkExistingLogin() async {
     final config = await OwnerApiService.getConfig();
     if (config != null && mounted) {
+      // فحص هل الجهاز ما زال نشطاً في السيرفر
+      final isActive = await OwnerApiService.isDeviceActive();
+      if (!isActive) {
+        setState(() {
+          _errorMessage = '⛔ تم إيقاف وصول هذا الهاتف من قبل إدارة الصيدلية';
+        });
+        return;
+      }
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
@@ -35,23 +44,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _handleLogin() async {
-    final key = _keyController.text.trim();
-    if (key.isEmpty) {
-      setState(() => _errorMessage = 'يرجى إدخال أو مسح رمز التفعيل الخاص بالصيدلية');
-      return;
-    }
+  Future<void> _processQrScanned(String rawValue) async {
+    if (rawValue.trim().isEmpty) return;
 
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _statusText = 'جاري التحقق وتسجيل الهاتف في السحابة المشفرة... 🛡️';
     });
 
     try {
-      final config = await OwnerApiService.loginWithActivationKey(key);
+      await OwnerApiService.loginWithActivationKey(rawValue);
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _statusText = 'تم الربط والتسجيل بنجاح ✅';
+        });
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
@@ -61,6 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _statusText = '';
           _errorMessage = e.toString().replaceAll('Exception: ', '');
         });
       }
@@ -69,6 +80,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// فتح ماسح الباركود وQR Code بالكاميرا
   void _openQrScanner() {
+    setState(() => _errorMessage = null);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -76,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.of(context).size.height * 0.8,
           decoration: const BoxDecoration(
             color: Color(0xFF0F172A),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -100,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF10B981), size: 24),
                     const SizedBox(width: 10),
                     const Text(
-                      'وجه الكاميرا نحو باركود / QR الصيدلية',
+                      'وجه الكاميرا نحو باركود الصيدلية',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const Spacer(),
@@ -114,8 +127,8 @@ class _LoginScreenState extends State<LoginScreen> {
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
-                  'يمكنك مسح الرمز المعروض في شاشة النظام (الإعدادات -> رموز التفعيل) أو من لوحة تحكم المطور.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  'افتح شاشة النظام في الكمبيوتر (الإعدادات > بيانات الترخيص والأجهزة المتصلة) واضغط (عرض باركود الاتصال للمدير).',
+                  style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.3),
                 ),
               ),
               const SizedBox(height: 16),
@@ -132,8 +145,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             final rawValue = barcode.rawValue?.trim();
                             if (rawValue != null && rawValue.isNotEmpty) {
                               Navigator.pop(ctx);
-                              _keyController.text = rawValue;
-                              _handleLogin();
+                              _processQrScanned(rawValue);
                               break;
                             }
                           }
@@ -141,15 +153,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       // إطار توجيه المسح
                       Container(
-                        width: 240,
-                        height: 240,
+                        width: 250,
+                        height: 250,
                         decoration: BoxDecoration(
                           border: Border.all(color: const Color(0xFF10B981), width: 3),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF10B981).withOpacity(0.2),
-                              blurRadius: 20,
+                              color: const Color(0xFF10B981).withOpacity(0.25),
+                              blurRadius: 24,
                               spreadRadius: 2,
                             ),
                           ],
@@ -168,12 +180,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  void dispose() {
-    _keyController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -189,17 +195,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     // الشعار والأفاتار الفاخر ثلاثي الأبعاد بتأثير متوهج
                     const LuxuryAppAvatar(
-                      size: 116,
+                      size: 110,
                       showBadge: true,
                       badgeText: '👑 المدير التنفيذي',
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
 
                     // العنوان والوصف
                     const Text(
                       'PharmaOS Owner',
                       style: TextStyle(
-                        fontSize: 30,
+                        fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                         letterSpacing: 1.2,
@@ -209,11 +215,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       'منظومة المراقبة والتحكم المباشر للمدير العام',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: Colors.white.withOpacity(0.7),
                       ),
                     ),
-                    const SizedBox(height: 36),
+                    const SizedBox(height: 32),
 
                     // بطاقة تسجيل الدخول الزجاجية
                     Container(
@@ -222,137 +228,109 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderColor: OwnerTheme.primaryEmerald.withOpacity(0.3),
                       ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Icon(Icons.vpn_key_rounded, color: OwnerTheme.accentGold, size: 20),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'رمز تفعيل الصيدلية الأساسي',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: OwnerTheme.primaryEmerald.withOpacity(0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.qr_code_scanner_rounded,
+                              color: Color(0xFF34D399),
+                              size: 42,
+                            ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'الربط السحابي المباشر',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           Text(
-                            'أدخل رمز التفعيل الخاص بصيدليتك الأساسية ليتم ربط كافة الفروع والأجهزة والبيانات تلقائياً دون أي تداخل.',
+                            'لربط هذا الهاتف بالصيدلية، اضغط الزر أدناه وصور باركود الاتصال المعروض في نظام الكمبيوتر (الإعدادات > بيانات الترخيص والأجهزة المتصلة).',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withOpacity(0.7),
                               height: 1.4,
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
 
-                          TextField(
-                            controller: _keyController,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              letterSpacing: 1.1,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'أدخل رمز التفعيل أو امسح الباركود',
-                              prefixIcon: Icon(Icons.security_rounded, color: OwnerTheme.primaryEmeraldLight),
-                              suffixIcon: IconButton(
-                                icon: Icon(Icons.qr_code_scanner_rounded, color: OwnerTheme.accentGold),
-                                tooltip: 'مسح الباركود بالكاميرا',
+                          if (_isLoading)
+                            Column(
+                              children: [
+                                const CircularProgressIndicator(color: Color(0xFF10B981), strokeWidth: 3),
+                                const SizedBox(height: 14),
+                                Text(
+                                  _statusText,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: Color(0xFF34D399), fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            )
+                          else
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton.icon(
                                 onPressed: _openQrScanner,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF059669),
+                                  foregroundColor: Colors.white,
+                                  elevation: 6,
+                                  shadowColor: const Color(0xFF10B981).withOpacity(0.4),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                icon: const Icon(Icons.camera_alt_rounded, size: 24),
+                                label: const Text(
+                                  '📷 تصوير باركود الاتصال',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-
-                          // زر مسح الباركود المباشر
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: OwnerTheme.accentGoldLight,
-                                side: BorderSide(color: OwnerTheme.accentGold.withOpacity(0.5)),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
-                              label: const Text(
-                                'مسح باركود الصيدلية بالكاميرا 📷',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                              onPressed: _openQrScanner,
-                            ),
-                          ),
 
                           if (_errorMessage != null) ...[
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 16),
                             Container(
-                              padding: const EdgeInsets.all(10),
+                              padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: Colors.redAccent.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+                                  const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       _errorMessage!,
-                                      style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                                      style: const TextStyle(color: Colors.redAccent, fontSize: 12, height: 1.3),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                           ],
-
-                          const SizedBox(height: 24),
-
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: OwnerTheme.primaryEmerald,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                                    )
-                                  : const Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.lock_open_rounded, size: 20),
-                                        SizedBox(width: 10),
-                                        Text('دخول لوحة تحكم المدير', style: TextStyle(fontSize: 16)),
-                                      ],
-                                    ),
-                            ),
-                          ),
                         ],
                       ),
                     ),
 
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
 
                     // مزايا النظام
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _FeatureBadge(icon: Icons.videocam_rounded, label: 'بث حي للشاشة والكاميرا'),
-                        const SizedBox(width: 16),
-                        _FeatureBadge(icon: Icons.price_change_rounded, label: 'تعديل الأسعار والمخزون'),
-                        const SizedBox(width: 16),
-                        _FeatureBadge(icon: Icons.cloud_sync_rounded, label: 'نسخ ثلاثي فوري'),
+                        _buildFeatureTag(Icons.lock_clock_rounded, 'تشفير شامل 256-bit'),
+                        const SizedBox(width: 12),
+                        _buildFeatureTag(Icons.cloud_done_rounded, 'ربط تلقائي بالصيدلية'),
                       ],
                     ),
                   ],
@@ -364,33 +342,29 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
 
-class _FeatureBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _FeatureBadge({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withOpacity(0.8),
-            shape: BoxShape.circle,
-            border: Border.all(color: OwnerTheme.surfaceBorder),
+  Widget _buildFeatureTag(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: OwnerTheme.primaryEmeraldLight),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withOpacity(0.7),
+            ),
           ),
-          child: Icon(icon, color: OwnerTheme.accentGoldLight, size: 18),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

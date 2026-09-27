@@ -3,9 +3,12 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
+import 'package:flutter/foundation.dart';
 import 'cloud_sync_service.dart';
 import 'license_service.dart';
-import 'package:flutter/foundation.dart';
+import 'multi_destination_backup_service.dart';
+import 'official_date_time_service.dart';
 
 class PendingBackup {
   final String filePath;
@@ -76,7 +79,7 @@ class BackupOfflineQueueService {
     final pendingBackups = await getPendingBackups();
     if (pendingBackups.isEmpty) return;
 
-    debugPrint('🔄 يوجد ${pendingBackups.length} نسخ احتياطية معلقة للرفع السحابي');
+    debugPrint('🔄 يوجد ${pendingBackups.length} نسخ احتياطية معلقة للمزامنة السحابية');
 
     try {
       final config = await LicenseService.getTenantConfig();
@@ -95,40 +98,95 @@ class BackupOfflineQueueService {
         final bytes = await file.readAsBytes();
         final actualHash = md5.convert(bytes).toString();
 
-        // الرفع لـ Storage
-        final storageRes = await http.post(
-          Uri.parse('$url/storage/v1/object/backups/$pharmacyId/${backup.fileName}'),
-          headers: {
-            'apikey': key,
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/octet-stream',
-          },
-          body: bytes,
-        );
+        // 1. مزامنة مع مجلدات Google Drive / OneDrive إن وجدت
+        try {
+          final userProfile = Platform.environment['USERPROFILE'] ?? '';
+          final syncTargets = [
+            p.join(userProfile, 'Google Drive', 'PharmaOS_CloudVault'),
+            p.join(userProfile, 'GoogleDrive', 'PharmaOS_CloudVault'),
+            p.join(userProfile, 'OneDrive', 'PharmaOS_CloudVault'),
+            p.join(userProfile, 'Desktop', 'PharmaOS_GoogleDrive_Sync'),
+          ];
+          for (final tPath in syncTargets) {
+            final tDir = Directory(tPath);
+            if (await tDir.exists()) {
+              final mirrored = File(p.join(tDir.path, backup.fileName));
+              if (!await mirrored.exists()) {
+                await file.copy(mirrored.path);
+              }
+            }
+          }
+        } catch (_) {}
 
-        if (storageRes.statusCode == 200 || storageRes.statusCode == 409) {
-          // تسجيل في قاعدة البيانات
-          final recordRes = await http.post(
-            Uri.parse('$url/rest/v1/cloud_backups'),
+        // 2. إرسال إلى Telegram Bot API
+        bool telegramSuccess = false;
+        try {
+          final fileLengthKb = (backup.fileSizeBytes / 1024).toStringAsFixed(1);
+          final fileLengthMb = (backup.fileSizeBytes / (1024 * 1024)).toStringAsFixed(2);
+          final nowStr = OfficialDateTimeService.formatOfficialDateTime(DateTime.now());
+          final caption = '''
+🏥 <b>نسخة احتياطية معلقة تم رفعها تلقائياً - PharmaOS</b>
+━━━━━━━━━━━━━━━━━━━━
+🏢 <b>الصيدلية:</b> ${config.pharmacyName} (#$pharmacyId)
+📅 <b>تاريخ الرفع:</b> $nowStr
+📦 <b>الحجم:</b> $fileLengthKb كيلوبايت ($fileLengthMb ميجابايت)
+🏷️ <b>الحدث:</b> ${backup.triggerReason}
+🔒 <b>التشفير والحماية:</b> SQLite AES-256 Verified
+━━━━━━━━━━━━━━━━━━━━
+✅ <b>تمت المزامنة السحابية المؤجلة بنجاح فور توفر الإنترنت.</b>
+''';
+          telegramSuccess = await MultiDestinationBackupService.uploadDocumentToTelegram(
+            file: file,
+            caption: caption,
+            customFileName: backup.fileName,
+            timeout: const Duration(seconds: 45),
+          );
+        } catch (e) {
+          debugPrint('Offline queue telegram upload error: $e');
+        }
+
+        // 3. رفع إلى Supabase Storage وقاعدة البيانات
+        bool supabaseSuccess = false;
+        try {
+          final storageRes = await http.post(
+            Uri.parse('$url/storage/v1/object/backups/$pharmacyId/${backup.fileName}'),
             headers: {
               'apikey': key,
               'Authorization': 'Bearer $key',
-              'Content-Type': 'application/json',
+              'Content-Type': 'application/octet-stream',
             },
-            body: jsonEncode({
-              'pharmacy_id': pharmacyId,
-              'file_name': backup.fileName,
-              'file_hash': actualHash,
-              'file_size_bytes': backup.fileSizeBytes,
-              'trigger_reason': backup.triggerReason + ' (رفع متأخر)',
-              'is_uploaded_supabase': true,
-            }),
-          );
+            body: bytes,
+          ).timeout(const Duration(seconds: 45));
 
-          if (recordRes.statusCode == 201 || recordRes.statusCode == 409) {
-             debugPrint('✅ تم رفع النسخة الاحتياطية المتأخرة: ${backup.fileName}');
-             await removeBackup(backup.fileHash);
+          if (storageRes.statusCode == 200 || storageRes.statusCode == 409) {
+            final recordRes = await http.post(
+              Uri.parse('$url/rest/v1/cloud_backups'),
+              headers: {
+                'apikey': key,
+                'Authorization': 'Bearer $key',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'pharmacy_id': pharmacyId,
+                'file_name': backup.fileName,
+                'file_hash': actualHash,
+                'file_size_bytes': backup.fileSizeBytes,
+                'trigger_reason': '${backup.triggerReason} (مزامنة مؤجلة)',
+                'is_uploaded_supabase': true,
+              }),
+            ).timeout(const Duration(seconds: 15));
+
+            if (recordRes.statusCode == 201 || recordRes.statusCode == 409) {
+              supabaseSuccess = true;
+            }
           }
+        } catch (e) {
+          debugPrint('Offline queue supabase upload error: $e');
+        }
+
+        if (telegramSuccess || supabaseSuccess) {
+          debugPrint('✅ تم تفريغ ومزامنة النسخة المعلقة بنجاح: ${backup.fileName}');
+          await removeBackup(backup.fileHash);
         }
       }
     } catch (e) {

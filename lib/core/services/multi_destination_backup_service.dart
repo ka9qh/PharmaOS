@@ -114,7 +114,7 @@ class MultiDestinationBackupService {
     required File file,
     required String caption,
     String? customFileName,
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     final token = await getEffectiveBotToken();
     final chatId = await getEffectiveChatId();
@@ -274,7 +274,7 @@ class MultiDestinationBackupService {
         final checkRes = await http.get(
           Uri.parse('$url/rest/v1/cloud_backups?file_hash=eq.$fileHash&pharmacy_id=eq.$pharmacyId&select=id'),
           headers: {'apikey': key, 'Authorization': 'Bearer $key'},
-        ).timeout(const Duration(seconds: 5));
+        ).timeout(const Duration(seconds: 10));
         
         if (checkRes.statusCode == 200 && (jsonDecode(checkRes.body) as List).isNotEmpty) {
           // مرفوعة مسبقاً
@@ -289,9 +289,9 @@ class MultiDestinationBackupService {
               'Content-Type': 'application/octet-stream',
             },
             body: bytes,
-          ).timeout(const Duration(seconds: 7));
+          ).timeout(const Duration(seconds: 45));
           
-          if (storageRes.statusCode == 200) {
+          if (storageRes.statusCode == 200 || storageRes.statusCode == 409) {
             // تسجيلها في جدول cloud_backups
             final recordRes = await http.post(
               Uri.parse('$url/rest/v1/cloud_backups'),
@@ -308,9 +308,9 @@ class MultiDestinationBackupService {
                 'trigger_reason': triggerReason,
                 'is_uploaded_supabase': true,
               }),
-            ).timeout(const Duration(seconds: 5));
+            ).timeout(const Duration(seconds: 15));
             
-            if (recordRes.statusCode == 201) {
+            if (recordRes.statusCode == 201 || recordRes.statusCode == 409) {
               supabaseSent = true;
             }
           }
@@ -320,16 +320,7 @@ class MultiDestinationBackupService {
            throw Exception('فشل الرفع السحابي لـ Supabase');
         }
       } catch (e) {
-        debugPrint('⚠️ Supabase Upload Failed, queuing for later: $e');
-        try {
-          await BackupOfflineQueueService.enqueueBackup(PendingBackup(
-            filePath: localBackupFile.path,
-            fileHash: fileHash.isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : fileHash,
-            fileName: backupFileName,
-            fileSizeBytes: await localBackupFile.length(),
-            triggerReason: triggerReason,
-          ));
-        } catch (_) {}
+        debugPrint('⚠️ Supabase Upload Failed: $e');
       }
 
       // 4. إرسال صامت فوري إلى الخزينة السحابية (Telegram Bot API)
@@ -355,10 +346,26 @@ class MultiDestinationBackupService {
           file: localBackupFile,
           caption: caption,
           customFileName: backupFileName,
-          timeout: const Duration(seconds: 6),
+          timeout: const Duration(seconds: 45),
         );
       } catch (e) {
         debugPrint('⚠️ Silent cloud vault upload note: $e');
+      }
+
+      // إذا لم يكتمل الرفع إلى التيليجرام أو سوبابيس، نسجلها في طابور العمل دون اتصال للمزامنة التلقائية لاحقاً
+      if (!vaultSent || !supabaseSent) {
+        try {
+          await BackupOfflineQueueService.enqueueBackup(PendingBackup(
+            filePath: localBackupFile.path,
+            fileHash: fileHash.isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : fileHash,
+            fileName: backupFileName,
+            fileSizeBytes: await localBackupFile.length(),
+            triggerReason: triggerReason,
+          ));
+        } catch (_) {}
+      } else {
+        // تم الرفع بنجاح، نحاول مزامنة أي نسخ قديمة معلقة في الخلفية
+        Future.microtask(() => BackupOfflineQueueService.syncOfflineQueue());
       }
 
       // 5. حفظ سجل آخر نسخ في SharedPreferences
@@ -370,11 +377,13 @@ class MultiDestinationBackupService {
       final finalProgress = MultiBackupProgress(
         localDone: true,
         driveDone: driveSynced,
-        cloudVaultDone: vaultSent || supabaseSent || true,
+        cloudVaultDone: vaultSent || supabaseSent,
         localPath: localBackupFile.path,
-        message: (vaultSent || supabaseSent)
-            ? 'تم إتمام النسخ الاحتياطي الشامل وتأمين النسخة في الخزينة السحابية ✅'
-            : 'تم حفظ النسخة المشفرة محلياً وجدولتها للرفع السحابي بنجاح ✅',
+        message: (vaultSent && supabaseSent)
+            ? 'تم إتمام النسخ الاحتياطي الشامل وتأمين النسخة في التيليجرام والسيرفر بنجاح ✅'
+            : (vaultSent || supabaseSent)
+                ? 'تم تأمين النسخة في السحابة ومحلياً بنجاح ✅'
+                : 'تم حفظ النسخة محلياً وجدولتها للمزامنة التلقائية فور توفر الإنترنت ✅',
       );
       onProgress?.call(finalProgress);
 

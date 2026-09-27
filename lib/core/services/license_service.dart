@@ -28,7 +28,7 @@ class LicenseService {
     // الإعدادات الافتراضية لأول تشغيل
     final defaultDeviceId = _generateDeviceId();
     _cachedConfig = TenantConfig(
-      pharmacyId: 'PHARM-${DateTime.now().year}-001',
+      pharmacyId: '2',
       pharmacyName: 'صيدلية نموذجية',
       deviceId: defaultDeviceId,
       isActivated: true,

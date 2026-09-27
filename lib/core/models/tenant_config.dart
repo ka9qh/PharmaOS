@@ -20,13 +20,13 @@ class TenantConfig {
   final bool pausedByAdmin; // هل تم إيقاف الصيدلية من قبل الإدارة؟
 
   const TenantConfig({
-    this.pharmacyId = 'PHARM-LOCAL-01',
+    this.pharmacyId = '2',
     this.pharmacyName = 'صيدلية نموذجية',
     this.licenseKey = 'PHARMAOS-COMMERCIAL-LIFETIME',
-    this.branchId = 'main',
+    this.branchId = '1',
     this.branchName = 'الفرع الرئيسي',
     this.deviceId = 'POS-01',
-    this.isCloudSyncEnabled = false,
+    this.isCloudSyncEnabled = true,
     this.cloudServerUrl = '',
     this.licenseExpiry,
     this.isActivated = true,

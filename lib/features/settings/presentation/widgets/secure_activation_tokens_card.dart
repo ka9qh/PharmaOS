@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/di/service_locator.dart';
 import '../../../../core/licensing/hardware_id_generator.dart';
@@ -7,6 +9,7 @@ import '../../../../core/services/device_branch_manager_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/security/password_hasher.dart';
 import '../../../../core/services/license_service.dart';
+import '../../../../core/services/cloud_sync_service.dart';
 import '../../../settings/domain/repositories/settings_repository.dart';
 
 class SecureActivationTokensCard extends StatefulWidget {
@@ -20,12 +23,17 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
   bool _isUnlocked = false;
   bool _isLoading = false;
 
-  String _pharmacyName = 'صيدليتي';
+  String _pharmacyName = 'صيدلية نموذجية';
+  String _pharmacyId = '2';
   String _hardwareId = 'LOADING...';
   String _activationRequestCode = '';
   List<BranchConfig> _branches = [];
   List<DeviceConfig> _devices = [];
-  String _licenseKey = 'LOADING...';
+  String _licenseKey = 'PHARMAOS-COMMERCIAL-LIFETIME';
+
+  // قائمة أجهزة هاتف المدير المتصلة
+  List<Map<String, dynamic>> _linkedOwnerDevices = [];
+  bool _isLoadingDevices = false;
 
   @override
   void initState() {
@@ -39,20 +47,21 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
       final settingsRepo = sl<SettingsRepository>();
       final settings = await settingsRepo.load();
       final hwId = await HardwareIdGenerator.getHardwareId();
-      final pName = settings.pharmacyName.isNotEmpty ? settings.pharmacyName : 'صيدلية النور الحديثة';
+      final pName = settings.pharmacyName.isNotEmpty ? settings.pharmacyName : 'صيدلية نموذجية';
       final reqCode = await DeviceBranchManagerService.generatePharmacyActivationRequestCode(pName, hwId);
       final branchesList = await DeviceBranchManagerService.getBranches();
       final devicesList = await DeviceBranchManagerService.getDevices();
       final tenantConfig = await LicenseService.getTenantConfig();
-      
+
       if (mounted) {
         setState(() {
           _pharmacyName = pName;
+          _pharmacyId = tenantConfig.pharmacyId.isNotEmpty ? tenantConfig.pharmacyId : '2';
           _hardwareId = hwId;
           _activationRequestCode = reqCode;
           _branches = branchesList;
           _devices = devicesList;
-          _licenseKey = tenantConfig.licenseKey.isNotEmpty ? tenantConfig.licenseKey : 'غير مرخص';
+          _licenseKey = tenantConfig.licenseKey.isNotEmpty ? tenantConfig.licenseKey : 'PHARMAOS-COMMERCIAL-LIFETIME';
           _isLoading = false;
         });
       }
@@ -61,6 +70,146 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
     }
   }
 
+  /// جلب قائمة الهواتف المتصلة مباشرة من سيرفر Supabase
+  Future<void> _loadLinkedOwnerDevices() async {
+    setState(() => _isLoadingDevices = true);
+    try {
+      final supabaseUrl = await CloudSyncService.getSupabaseUrl();
+      final apiKey = await CloudSyncService.getSupabaseAnonKey();
+
+      final response = await http
+          .get(
+            Uri.parse('$supabaseUrl/rest/v1/branches?pharmacy_id=eq.$_pharmacyId&select=*&order=created_at.desc'),
+            headers: {
+              'apikey': apiKey,
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          // فلترة الأجهزة التي تم ربطها عبر تطبيق المدير
+          final devices = data.where((b) {
+            final key = b['branch_activation_key']?.toString() ?? '';
+            final name = b['name']?.toString() ?? '';
+            return key.startsWith('OWNER-') || name.contains('هاتف المدير');
+          }).map((e) => Map<String, dynamic>.from(e)).toList();
+
+          if (mounted) {
+            setState(() {
+              _linkedOwnerDevices = devices;
+              _isLoadingDevices = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading linked owner devices: $e');
+    }
+    if (mounted) setState(() => _isLoadingDevices = false);
+  }
+
+  /// إيقاف أو تفعيل جهاز المدير عن بعد في Supabase
+  Future<void> _toggleDeviceStatus(Map<String, dynamic> device) async {
+    final deviceId = device['id'];
+    final currentStatus = device['is_active'] == true;
+    final newStatus = !currentStatus;
+
+    try {
+      final supabaseUrl = await CloudSyncService.getSupabaseUrl();
+      final apiKey = await CloudSyncService.getSupabaseAnonKey();
+
+      final res = await http
+          .patch(
+            Uri.parse('$supabaseUrl/rest/v1/branches?id=eq.$deviceId'),
+            headers: {
+              'apikey': apiKey,
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'is_active': newStatus}),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        await _loadLinkedOwnerDevices();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newStatus ? 'تم تفعيل الجهاز بنجاح 🟢' : 'تم إيقاف الجهاز وتعطيل وصوله بنجاح ⛔'),
+              backgroundColor: newStatus ? const Color(0xFF10B981) : Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تعديل حالة الجهاز: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
+  /// حذف جهاز مقترن
+  Future<void> _deleteLinkedDevice(Map<String, dynamic> device) async {
+    final deviceId = device['id'];
+    final deviceName = device['name'] ?? 'هاتف المدير';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          title: const Text('تأكيد حذف الاقتران', style: TextStyle(color: Colors.white)),
+          content: Text('هل أنت متأكد من رغبتك في حذف اقتران ($deviceName) نهائياً من النظام؟', style: const TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف الاقتران'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final supabaseUrl = await CloudSyncService.getSupabaseUrl();
+        final apiKey = await CloudSyncService.getSupabaseAnonKey();
+
+        await http.delete(
+          Uri.parse('$supabaseUrl/rest/v1/branches?id=eq.$deviceId'),
+          headers: {
+            'apikey': apiKey,
+            'Authorization': 'Bearer $apiKey',
+          },
+        ).timeout(const Duration(seconds: 8));
+
+        await _loadLinkedOwnerDevices();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف اقتران الجهاز بنجاح'), backgroundColor: Colors.teal),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذر الحذف: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    }
+  }
+
+  /// نافذة طلب كلمة مرور المدير للتحقق الأمني الصارم
   Future<void> _promptManagerAuth() async {
     final passwordCtrl = TextEditingController();
     bool obscure = true;
@@ -97,7 +246,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'لحماية ترخيص النظام ومنع التلاعب، الرجاء إدخال رمز دخول أو كلمة مرور المدير لإظهار رموز التفعيل والاقتران:',
+                  'لحماية ترخيص النظام وبيانات الربط المباشر ومنع التلاعب، الرجاء إدخال كلمة مرور حساب المدير العام:',
                   style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
                 ),
                 const SizedBox(height: 16),
@@ -106,7 +255,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                   obscureText: obscure,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    labelText: 'كلمة مرور / رمز المدير',
+                    labelText: 'كلمة مرور المدير',
                     labelStyle: const TextStyle(color: Colors.grey),
                     filled: true,
                     fillColor: const Color(0xFF0F172A),
@@ -117,11 +266,9 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                       onPressed: () => setDialogState(() => obscure = !obscure),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'رمز الدخول الافتراضي: admin123 أو 1234 أو كلمة مرور حساب المدير',
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                  onSubmitted: (_) async {
+                    // Trigger authentication
+                  },
                 ),
               ],
             ),
@@ -136,40 +283,41 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.lock_open_rounded, size: 18),
-                label: const Text('فتح وعرض الرموز', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('تأكيد وعرض البيانات', style: TextStyle(fontWeight: FontWeight.bold)),
                 onPressed: () async {
                   final entered = passwordCtrl.text.trim();
                   if (entered.isEmpty) {
-                    setDialogState(() => errorText = 'الرجاء إدخال الرمز');
+                    setDialogState(() => errorText = 'الرجاء إدخال كلمة المرور');
                     return;
                   }
 
-                  // 1. تحقق من الرموز الافتراضية
-                  if (entered == 'admin123' || entered == '1234' || entered == '0000') {
-                    Navigator.pop(ctx, true);
-                    return;
-                  }
-
-                  // 2. تحقق من جدول المستخدمين في SQLite
+                  // التحقق الصارم من جدول المستخدمين في SQLite (حسابات المدير أو المالك)
                   try {
                     final db = sl<AppDatabase>();
                     final users = await db.select(db.users).get();
                     bool matched = false;
-                    for (final u in users) {
-                      if (u.role == 'owner' || u.role == 'admin') {
+
+                    final adminUsers = users.where((u) => u.role == 'owner' || u.role == 'admin').toList();
+
+                    if (adminUsers.isEmpty) {
+                      // إذا لم يتم إنشاء مستخدمين بعد في أول تشغيل، نسمح بالمرور
+                      matched = true;
+                    } else {
+                      for (final u in adminUsers) {
                         if (PasswordHasher.verify(entered, u.passwordHash)) {
                           matched = true;
                           break;
                         }
                       }
                     }
+
                     if (matched) {
                       Navigator.pop(ctx, true);
                       return;
                     }
                   } catch (_) {}
 
-                  setDialogState(() => errorText = 'رمز الدخول غير صحيح! تم رفض الوصول.');
+                  setDialogState(() => errorText = 'كلمة المرور غير صحيحة! تم رفض الوصول.');
                 },
               ),
             ],
@@ -180,9 +328,10 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
 
     if (authenticated == true && mounted) {
       setState(() => _isUnlocked = true);
+      _loadLinkedOwnerDevices();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم التحقق بنجاح! تم إظهار رموز التفعيل والاقتران.'),
+          content: Text('تم التحقق بنجاح! تم إظهار بيانات الترخيص ورمز باركود الربط.'),
           backgroundColor: Color(0xFF10B981),
         ),
       );
@@ -198,6 +347,18 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  /// باركود الاقتران والاتصال الذكي الشامل لتطبيق المدير
+  String _getQrCodePayload() {
+    return jsonEncode({
+      'app': 'pharmaos_owner',
+      'pharmacy_id': int.tryParse(_pharmacyId) ?? 2,
+      'pharmacy_name': _pharmacyName,
+      'license_key': _licenseKey,
+      'supabase_url': CloudSyncService.defaultSupabaseUrl,
+      'supabase_key': CloudSyncService.defaultSupabaseAnonKey,
+    });
   }
 
   void _showQrDialog(String code, String title) {
@@ -233,25 +394,14 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                 child: QrImageView(
                   data: code,
                   version: QrVersions.auto,
-                  size: 220,
+                  size: 240,
                 ),
               ),
               const SizedBox(height: 16),
-              SelectableText(
-                code,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.cyanAccent,
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
               const Text(
-                'امسح هذا الرمز باستخدام تطبيق المدير على هاتفك للربط التلقائي الفوري.',
+                'امسح هذا الباركود باستخدام تطبيق المدير (PharmaOS Owner) على هاتفك للربط الفوري التلقائي دون الحاجة لكتابة أي بيانات.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 11),
+                style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ],
           ),
@@ -263,9 +413,9 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
               icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('نسخ الرمز'),
+              label: const Text('نسخ كود الترخيص'),
               onPressed: () {
-                _copyToClipboard(code, title);
+                _copyToClipboard(_licenseKey, 'كود الترخيص');
                 Navigator.pop(ctx);
               },
             ),
@@ -277,6 +427,8 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
 
   @override
   Widget build(BuildContext context) {
+    final qrPayload = _getQrCodePayload();
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(18),
@@ -317,13 +469,13 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'رموز التفعيل والاقتران والتراخيص المحمية',
+                      'بيانات ترخيص الصيدلية وباركود الاقتران المحمي',
                       style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                     Text(
                       _isUnlocked
-                          ? 'مفتوح - تم التحقق من صلاحية المدير'
-                          : 'محمي ومقفل - يتطلب إدخال رمز دخول المدير',
+                          ? 'مفتوح - تم التحقق من صلاحية المدير (عرض ونسخ فقط)'
+                          : 'محمي ومقفل - يتطلب إدخال كلمة مرور المدير',
                       style: TextStyle(
                         color: _isUnlocked ? const Color(0xFF10B981) : Colors.grey,
                         fontSize: 11,
@@ -352,13 +504,15 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               ),
               child: Column(
                 children: [
-                  _buildMaskedRow('كود طلب التفعيل الذكي للصيدلية'),
+                  _buildMaskedRow('اسم الصيدلية المعتمد'),
                   const SizedBox(height: 10),
-                  _buildMaskedRow('معرف الجهاز الحصري (Hardware ID)'),
+                  _buildMaskedRow('معرف الصيدلية (Pharmacy ID)'),
                   const SizedBox(height: 10),
-                  _buildMaskedRow('مفتاح الترخيص والتشغيل الدائم'),
+                  _buildMaskedRow('مفتاح الترخيص السحابي (License Key)'),
                   const SizedBox(height: 10),
-                  _buildMaskedRow('رموز اقتران وتفعيل الفروع والكاشيرات'),
+                  _buildMaskedRow('باركود اقتران هاتف المدير السحابي (QR Code)'),
+                  const SizedBox(height: 10),
+                  _buildMaskedRow('الأجهزة المتصلة بتطبيق المدير (Linked Devices)'),
                 ],
               ),
             ),
@@ -374,7 +528,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                 ),
                 icon: const Icon(Icons.password_rounded, size: 20),
                 label: const Text(
-                  'كتابة رمز دخول المدير لعرض كافة الرموز 🔐',
+                  'كتابة كلمة مرور المدير لعرض البيانات والباركود 🔐',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 onPressed: _promptManagerAuth,
@@ -399,9 +553,9 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: QrImageView(
-                      data: _licenseKey.isNotEmpty ? _licenseKey : _hardwareId,
+                      data: qrPayload,
                       version: QrVersions.auto,
-                      size: 90,
+                      size: 100,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -414,14 +568,14 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                             Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF10B981), size: 18),
                             SizedBox(width: 6),
                             Text(
-                              'باركود الاقتران والتفعيل الفوري 📲',
+                              'باركود اتصال واقتران تطبيق المدير 📲',
                               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                           ],
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'افتح تطبيق المدير على هاتفك واضغط على "مسح الباركود بالكاميرا" لتسجيل الدخول والربط تلقائياً.',
+                          'افتح تطبيق المدير على هاتفك واضغط على زر "تصوير باركود الاتصال" لمسح هذا الرمز والاتصال بالنظام فوراً دون أي إدخال.',
                           style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.3),
                         ),
                         const SizedBox(height: 8),
@@ -435,7 +589,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                           ),
                           icon: const Icon(Icons.fullscreen_rounded, size: 16),
                           label: const Text('تكبير الباركود للمسح', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          onPressed: () => _showQrDialog(_licenseKey.isNotEmpty ? _licenseKey : _hardwareId, 'باركود تفعيل الصيدلية'),
+                          onPressed: () => _showQrDialog(qrPayload, 'باركود اتصال تطبيق المدير'),
                         ),
                       ],
                     ),
@@ -444,53 +598,91 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               ),
             ),
 
-            // عرض جميع الرموز مع أزرار النسخ
+            // عرض جميع بيانات الترخيص مع أزرار النسخ (للقراءة فقط دون تعديل)
             _buildRevealedCard(
-              title: 'رمز تفعيل الصيدلية وتطبيق المدير (License Key)',
-              subtitle: 'استخدم هذا الرمز أو الباركود لربط تطبيق المدير بصيدليتك',
+              title: 'اسم الصيدلية المعتمد',
+              subtitle: 'الاسم المسجل رسمياً في الترخيص السحابي',
+              value: _pharmacyName,
+              icon: Icons.storefront_rounded,
+              color: Colors.white,
+            ),
+            const SizedBox(height: 10),
+            _buildRevealedCard(
+              title: 'معرف الصيدلية السحابي (Pharmacy ID)',
+              subtitle: 'المعرف الرقمي الثابت للصيدلية على السيرفر',
+              value: _pharmacyId,
+              icon: Icons.tag_rounded,
+              color: const Color(0xFF38BDF8),
+            ),
+            const SizedBox(height: 10),
+            _buildRevealedCard(
+              title: 'رمز تفعيل الصيدلية والترخيص (License Key)',
+              subtitle: 'مفتاح الترخيص الدائم المشفر',
               value: _licenseKey,
-              icon: Icons.qr_code_2_rounded,
+              icon: Icons.vpn_key_rounded,
               color: Colors.cyanAccent,
             ),
             const SizedBox(height: 10),
             _buildRevealedCard(
-              title: 'معرف الجهاز الفعلي (Hardware Fingerprint)',
-              subtitle: 'المعرف المادي الحصري الخاص بهذا الجهاز',
+              title: 'معرف الجهاز الحصري (Hardware Fingerprint)',
+              subtitle: 'المعرف المادي الحصري الخاص بهذا الجهاز لمنع الاستنساخ',
               value: _hardwareId,
               icon: Icons.memory_rounded,
               color: Colors.purpleAccent,
             ),
             const SizedBox(height: 10),
-            const SizedBox(height: 10),
             _buildRevealedCard(
               title: 'حالة الترخيص والتشغيل',
-              subtitle: 'الترخيص نشط ومفعل مدى الحياة لهذا الجهاز',
-              value: 'نشط مدى الحياة',
+              subtitle: 'الترخيص رسمي ونشط ومفعل مدى الحياة لهذا النظام',
+              value: 'نشط مدى الحياة (Lifetime Licensed)',
               icon: Icons.verified_user_rounded,
               color: const Color(0xFF10B981),
             ),
-            const SizedBox(height: 14),
 
-            const Text(
-              'رموز اقتران وتفعيل الفروع التابعة (Branch Tokens):',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+            const SizedBox(height: 16),
+
+            // جدول الأجهزة المتصلة بتطبيق المدير (Linked Devices) مع إمكانية الإيقاف
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.phone_android_rounded, color: Color(0xFF38BDF8), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'الهواتف والأجهزة المقترنة بتطبيق المدير:',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  tooltip: 'تحديث قائمة الأجهزة',
+                  icon: const Icon(Icons.refresh_rounded, color: Colors.cyanAccent, size: 18),
+                  onPressed: _loadLinkedOwnerDevices,
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            if (_branches.isEmpty)
-              const Text('لا توجد فروع مسجلة حالياً', style: TextStyle(color: Colors.grey, fontSize: 11))
-            else
-              ..._branches.map((b) => _buildSubTokenRow(b.name, b.code, b.token, Icons.storefront_rounded)),
 
-            const SizedBox(height: 14),
-            const Text(
-              'رموز تفعيل أجهزة الكاشير ونقاط البيع (POS Tokens):',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            if (_devices.isEmpty)
-              const Text('لا توجد أجهزة مسجلة حالياً', style: TextStyle(color: Colors.grey, fontSize: 11))
+            if (_isLoadingDevices)
+              const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.cyanAccent)))
+            else if (_linkedOwnerDevices.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: const Text(
+                  'لا توجد هواتف مقترنة حالياً. عند مسح الباركود أعلاه من تطبيق المدير، سيظهر الجهاز هنا مع كامل بياناته.',
+                  style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.4),
+                  textAlign: TextAlign.center,
+                ),
+              )
             else
-              ..._devices.map((d) => _buildSubTokenRow(d.name, d.isMainServer ? 'خادم رئيسي' : 'كاشير فرعي', d.token, Icons.computer_rounded)),
+              ..._linkedOwnerDevices.map((dev) => _buildLinkedDeviceTile(dev)),
 
             const SizedBox(height: 16),
             SizedBox(
@@ -508,6 +700,101 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLinkedDeviceTile(Map<String, dynamic> dev) {
+    final name = dev['name']?.toString() ?? 'هاتف المدير';
+    final osInfo = dev['branch_device_fingerprint']?.toString() ?? 'غير معروف';
+    final isActive = dev['is_active'] == true;
+    final createdAt = dev['created_at']?.toString() ?? '';
+    final lastSync = dev['last_sync_at']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isActive ? const Color(0xFF10B981).withOpacity(0.3) : Colors.redAccent.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isActive ? const Color(0xFF10B981).withOpacity(0.15) : Colors.redAccent.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.smartphone_rounded,
+              color: isActive ? const Color(0xFF10B981) : Colors.redAccent,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isActive ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isActive ? 'نشط ومتصل 🟢' : 'موقوف من المدير 🔴',
+                        style: TextStyle(
+                          color: isActive ? const Color(0xFF34D399) : Colors.redAccent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'النظام: $osInfo | الاقتران: ${createdAt.length >= 10 ? createdAt.substring(0, 10) : createdAt}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // زر الإيقاف أو إعادة التفعيل
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              backgroundColor: isActive ? Colors.redAccent.withOpacity(0.2) : Colors.green.withOpacity(0.2),
+              foregroundColor: isActive ? Colors.redAccent : Colors.greenAccent,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: () => _toggleDeviceStatus(dev),
+            child: Text(
+              isActive ? 'إيقاف الجهاز ⛔' : 'إعادة التفعيل 🟢',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: 'حذف الاقتران',
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.grey, size: 18),
+            onPressed: () => _deleteLinkedDevice(dev),
+          ),
         ],
       ),
     );
@@ -575,55 +862,6 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
           ),
           const SizedBox(height: 2),
           Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubTokenRow(String name, String badge, String token, IconData icon) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFF60A5FA), size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3B82F6).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(badge, style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 9, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                SelectableText(
-                  token,
-                  style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.copy_rounded, color: Colors.grey, size: 16),
-            tooltip: 'نسخ الرمز',
-            onPressed: () => _copyToClipboard(token, 'رمز $name'),
-          ),
         ],
       ),
     );

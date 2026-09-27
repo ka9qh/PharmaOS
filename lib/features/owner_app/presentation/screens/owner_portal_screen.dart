@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' as intl;
-import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/services/tele_pharmacy_service.dart';
 import '../../../../core/services/license_service.dart';
 import '../../../../core/services/cloud_sync_service.dart';
@@ -20,10 +19,8 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
   bool _isLoading = false;
   bool _isSyncing = false;
   String _pharmacyName = 'الصيدلية الرئيسية';
-  String _licenseKey = '';
-  int _pharmacyId = 1;
+  int _pharmacyId = 2;
   int _branchId = 1;
-  String _supabaseUrl = '';
   List<TeleConsultation> _consultations = [];
 
   @override
@@ -36,9 +33,8 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
     setState(() => _isLoading = true);
     try {
       final tenant = await LicenseService.getTenantConfig();
-      final pId = int.tryParse(tenant.pharmacyId) ?? 1;
+      final pId = int.tryParse(tenant.pharmacyId) ?? 2;
       final bId = int.tryParse(tenant.branchId) ?? 1;
-      final url = await CloudSyncService.getSupabaseUrl();
 
       List<TeleConsultation> consultations = [];
       try {
@@ -51,10 +47,8 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
       if (mounted) {
         setState(() {
           _pharmacyName = tenant.pharmacyName;
-          _licenseKey = tenant.licenseKey;
           _pharmacyId = pId;
           _branchId = bId;
-          _supabaseUrl = url;
           _consultations = consultations;
         });
       }
@@ -92,61 +86,6 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
-  }
-
-  void _showQrDialog() {
-    final qrData = 'PHARMAOS#$_pharmacyId#$_licenseKey#$_pharmacyName#$_supabaseUrl';
-    showDialog(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.qr_code_2_rounded, color: Colors.cyanAccent, size: 28),
-              SizedBox(width: 10),
-              Text('رمز الاقتران السريع لتطبيق المدير', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: QrImageView(
-                  data: qrData,
-                  version: QrVersions.auto,
-                  size: 220.0,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'رمز التفعيل: $_licenseKey',
-                style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'امسح الرمز أو أدخل رمز التفعيل في تطبيق PharmaOS Owner على هاتف المدير للربط الفوري بالسحابة.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إغلاق', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -224,18 +163,8 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
                                 Row(
                                   children: [
                                     Text(
-                                      'الفرع الحالي: #$_branchId • كود الترخيص: $_licenseKey',
+                                      'الفرع الحالي: #$_branchId • المزامنة السحابية نشطة',
                                       style: const TextStyle(fontSize: 12, color: Colors.white70),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    InkWell(
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: _licenseKey));
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('تم نسخ كود الترخيص'), duration: Duration(seconds: 2)),
-                                        );
-                                      },
-                                      child: const Icon(Icons.copy_rounded, size: 14, color: Colors.cyanAccent),
                                     ),
                                   ],
                                 ),
@@ -257,16 +186,6 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF6366F1),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                ),
-                                icon: const Icon(Icons.qr_code_rounded, size: 18),
-                                label: const Text('رمز الاقتران السريع (QR)'),
-                                onPressed: _showQrDialog,
-                              ),
-                              const SizedBox(height: 8),
                               FilledButton.tonalIcon(
                                 style: FilledButton.styleFrom(
                                   backgroundColor: const Color(0xFF10B981).withOpacity(0.2),
@@ -411,9 +330,9 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
                           ),
                           const SizedBox(height: 10),
                           _buildInstructionStep('1', 'افتح تطبيق PharmaOS Owner على هاتف المدير (أندرويد أو آيفون).'),
-                          _buildInstructionStep('2', 'أدخل رمز التفعيل ($_licenseKey) أو امسح رمز الـ QR أعلاه للدخول الفوري.'),
-                          _buildInstructionStep('3', 'يصل إشعار سحابي فوري للمدير عند إرفاق أي روشتة أو عند تسجيل مبيعات جديدة.'),
-                          _buildInstructionStep('4', 'يرد المدير باسم العلاج والجرعة أو يغير الأسعار أو يراقب البث المباشر والكاميرا لحظياً من أي مكان.'),
+                          _buildInstructionStep('2', 'توجه في النظام هنا إلى (الإعدادات > بيانات الترخيص والأجهزة المتصلة) وافتح باركود الاقتران السحابي الآمن بعد تأكيد هوية المدير.'),
+                          _buildInstructionStep('3', 'اضغط زر (تصوير باركود الاتصال) في تطبيق الهاتف لتسجيل الجهاز وربطه فورياً بالسحابة المشفرة.'),
+                          _buildInstructionStep('4', 'يصل إشعار سحابي فوري للمدير عند إرفاق أي روشتة أو مبيعات، ويمكن مراقبة الصيدلية والبث لحظياً.'),
                         ],
                       ),
                     ),

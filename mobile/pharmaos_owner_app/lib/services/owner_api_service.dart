@@ -1,5 +1,6 @@
 // خدمة الاتصال السحابي والأوامر الحية الشاملة لتطبيق المدير - PharmaOS Owner App
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,18 @@ class OwnerApiService {
   static const String _prefSupabaseUrl = 'owner_supabase_url_v1';
   static const String _prefSupabaseKey = 'owner_supabase_key_v1';
   static const String _prefBranchesList = 'owner_branches_list_v1';
+  static const String _prefDeviceFingerprint = 'owner_device_fingerprint_v1';
+
+  static Future<String> getOrCreateDeviceFingerprint() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? fp = prefs.getString(_prefDeviceFingerprint);
+    if (fp == null || fp.isEmpty) {
+      final os = Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Mobile');
+      fp = 'PHONE-$os-${DateTime.now().millisecondsSinceEpoch}';
+      await prefs.setString(_prefDeviceFingerprint, fp);
+    }
+    return fp;
+  }
 
   static Future<void> saveConfig(OwnerTenantConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -53,72 +66,115 @@ class OwnerApiService {
         'Prefer': 'return=representation',
       };
 
-  /// تسجيل الدخول عبر رمز التفعيل الشامل للصيدلية
+  /// فحص حالة الجهاز وما إذا كان المدير قد عطله من النظام المكتبي
+  static Future<bool> isDeviceActive() async {
+    try {
+      final config = await getConfig();
+      if (config == null) return true;
+      final fp = await getOrCreateDeviceFingerprint();
+
+      final res = await http.get(
+        Uri.parse('${config.supabaseUrl}/rest/v1/branches?device_fingerprint=eq.$fp&pharmacy_id=eq.${config.pharmacyId}&select=id,is_active'),
+        headers: _headers(config.supabaseKey),
+      ).timeout(const Duration(seconds: 5));
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final list = jsonDecode(res.body);
+        if (list is List && list.isNotEmpty) {
+          final row = list.first;
+          return row['is_active'] != false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  /// تسجيل الدخول عبر مسح باركود الاتصال السريع أو رمز التفعيل
   static Future<OwnerTenantConfig> loginWithActivationKey(String rawKey) async {
     final key = rawKey.trim();
     if (key.isEmpty) {
-      throw Exception('يرجى إدخال رمز تفعيل صحيح');
+      throw Exception('يرجى تصوير باركود الاتصال المعروض في شاشة النظام');
     }
 
     final defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
     final defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
 
+    int? parsedPharmacyId;
+    String? parsedPharmacyName;
+    String? parsedLicenseKey;
+    String supabaseUrl = defaultUrl;
+    String supabaseKey = defaultKey;
+
+    // 1. فحص إذا كان الرمز عبارة عن JSON مشفر من بطاقة الترخيص
+    if (key.startsWith('{') && key.endsWith('}')) {
+      try {
+        final jsonMap = jsonDecode(key) as Map<String, dynamic>;
+        parsedPharmacyId = int.tryParse(jsonMap['pharmacy_id']?.toString() ?? '');
+        parsedPharmacyName = jsonMap['pharmacy_name']?.toString();
+        parsedLicenseKey = jsonMap['license_key']?.toString();
+        if (jsonMap['supabase_url'] != null && jsonMap['supabase_url'].toString().isNotEmpty) {
+          supabaseUrl = jsonMap['supabase_url'].toString();
+        }
+        if (jsonMap['supabase_key'] != null && jsonMap['supabase_key'].toString().isNotEmpty) {
+          supabaseKey = jsonMap['supabase_key'].toString();
+        }
+      } catch (_) {}
+    } else if (key.contains('#')) {
+      // فحص إذا كان بالتنسيق: PHARMAOS#pharmacyId#licenseKey#name#url
+      final parts = key.split('#');
+      if (parts.length >= 3) {
+        parsedPharmacyId = int.tryParse(parts[1]);
+        parsedLicenseKey = parts[2];
+        if (parts.length >= 4) parsedPharmacyName = parts[3];
+        if (parts.length >= 5 && parts[4].isNotEmpty) supabaseUrl = parts[4];
+      }
+    } else {
+      parsedLicenseKey = key;
+    }
+
     try {
-      final encodedKey = Uri.encodeComponent(key);
       dynamic pharmacyData;
 
-      // 1. محاولة البحث المباشر بمفتاح الترخيص (license_key)
-      var url = '$defaultUrl/rest/v1/pharmacies?license_key=eq.$encodedKey&select=id,name,is_active,branches(name,is_active,device_fingerprint)&limit=1';
-      var response = await http.get(Uri.parse(url), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
+      // البحث في Supabase بالمعرف أو بمفتاح الترخيص
+      if (parsedPharmacyId != null) {
+        final res = await http.get(
+          Uri.parse('$supabaseUrl/rest/v1/pharmacies?id=eq.$parsedPharmacyId&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'),
+          headers: _headers(supabaseKey),
+        ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = jsonDecode(response.body);
-        if (data is List && data.isNotEmpty) {
-          pharmacyData = data.first;
-        }
-      }
-
-      // 2. إذا لم يتم العثور عليه، والرمز يحتوي على # (مثل: صيدلية_النور#WMIC-...)
-      if (pharmacyData == null && key.contains('#')) {
-        final parts = key.split('#');
-        final cleanName = Uri.encodeComponent(parts[0].replaceAll('_', ' '));
-        final subUrl = '$defaultUrl/rest/v1/pharmacies?name=ilike.*$cleanName*&select=id,name,is_active,branches(name,is_active,device_fingerprint)&limit=1';
-        final subRes = await http.get(Uri.parse(subUrl), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
-        if (subRes.statusCode >= 200 && subRes.statusCode < 300) {
-          final subData = jsonDecode(subRes.body);
-          if (subData is List && subData.isNotEmpty) {
-            pharmacyData = subData.first;
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          final data = jsonDecode(res.body);
+          if (data is List && data.isNotEmpty) {
+            pharmacyData = data.first;
           }
         }
       }
 
-      // 3. إذا كان الرمز يبدأ بـ WMIC أو POS (معرف جهاز) أو مفتاح فرع، ابحث في الفروع
-      if (pharmacyData == null) {
-        final bUrl = '$defaultUrl/rest/v1/branches?device_fingerprint=eq.$encodedKey&select=pharmacy_id,is_active&limit=1';
-        final bRes = await http.get(Uri.parse(bUrl), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
-        if (bRes.statusCode >= 200 && bRes.statusCode < 300) {
-          final bData = jsonDecode(bRes.body);
-          if (bData is List && bData.isNotEmpty) {
-            final pId = bData.first['pharmacy_id'];
-            final pRes = await http.get(Uri.parse('$defaultUrl/rest/v1/pharmacies?id=eq.$pId&select=id,name,is_active,branches(name,is_active,device_fingerprint)&limit=1'), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
-            if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
-              final pList = jsonDecode(pRes.body);
-              if (pList is List && pList.isNotEmpty) pharmacyData = pList.first;
-            }
+      if (pharmacyData == null && parsedLicenseKey != null && parsedLicenseKey.isNotEmpty) {
+        final res = await http.get(
+          Uri.parse('$supabaseUrl/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(parsedLicenseKey)}&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'),
+          headers: _headers(supabaseKey),
+        ).timeout(const Duration(seconds: 10));
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          final data = jsonDecode(res.body);
+          if (data is List && data.isNotEmpty) {
+            pharmacyData = data.first;
           }
         }
       }
 
-      // 4. إذا لم يتم العثور، وكان هناك صيدلية واحدة فقط مسجلة بالسيرفر (Fallback ذكي)
+      // Fallback ذكي للصيدلية الأساسية
       if (pharmacyData == null) {
-        final allRes = await http.get(Uri.parse('$defaultUrl/rest/v1/pharmacies?select=id,name,license_key,is_active,branches(name,is_active)&limit=5'), headers: _headers(defaultKey)).timeout(const Duration(seconds: 8));
-        if (allRes.statusCode >= 200 && allRes.statusCode < 300) {
-          final allList = jsonDecode(allRes.body);
-          if (allList is List && allList.isNotEmpty) {
-            // إذا كان المستخدم أدخل WMIC أو كود جهاز أو الاسم يطابق
-            if (key.startsWith('WMIC-') || key.startsWith('POS-') || key.contains('PHARMA')) {
-              pharmacyData = allList.first;
-            }
+        final res = await http.get(
+          Uri.parse('$supabaseUrl/rest/v1/pharmacies?select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'),
+          headers: _headers(supabaseKey),
+        ).timeout(const Duration(seconds: 10));
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          final data = jsonDecode(res.body);
+          if (data is List && data.isNotEmpty) {
+            pharmacyData = data.first;
           }
         }
       }
@@ -129,37 +185,62 @@ class OwnerApiService {
           throw Exception('هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
         }
 
-        if (p['subscription_type'] == 'limited' && p['subscription_end'] != null) {
-          final end = DateTime.parse(p['subscription_end']);
-          if (DateTime.now().isAfter(end)) {
-            throw Exception('لقد انتهى اشتراكك، يرجى تجديد الاشتراك');
+        final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 2;
+        final pName = p['name'] ?? parsedPharmacyName ?? 'صيدلية نموذجية';
+        final lic = parsedLicenseKey ?? 'PHARMAOS-COMMERCIAL-LIFETIME';
+
+        // 2. تسجيل الجهاز في جدول branches لتمكين التحكم به وإيقافه من سطح المكتب
+        final deviceFp = await getOrCreateDeviceFingerprint();
+        final osName = Platform.isAndroid ? 'أندرويد' : (Platform.isIOS ? 'آيفون' : 'جوال');
+        final deviceName = 'هاتف المدير ($osName)';
+
+        try {
+          // فحص هل مسجل مسبقاً
+          final checkDevice = await http.get(
+            Uri.parse('$supabaseUrl/rest/v1/branches?device_fingerprint=eq.$deviceFp&pharmacy_id=eq.$pId'),
+            headers: _headers(supabaseKey),
+          ).timeout(const Duration(seconds: 5));
+
+          if (checkDevice.statusCode == 200) {
+            final devList = jsonDecode(checkDevice.body);
+            if (devList is List && devList.isEmpty) {
+              // إضافة الجهاز كفرع/جهاز جديد
+              await http.post(
+                Uri.parse('$supabaseUrl/rest/v1/branches'),
+                headers: _headers(supabaseKey),
+                body: jsonEncode({
+                  'pharmacy_id': pId,
+                  'name': deviceName,
+                  'branch_activation_key': lic,
+                  'device_fingerprint': deviceFp,
+                  'is_active': true,
+                }),
+              ).timeout(const Duration(seconds: 8));
+            } else if (devList is List && devList.isNotEmpty) {
+              final devRow = devList.first;
+              if (devRow['is_active'] == false) {
+                throw Exception('تم إيقاف هذا الجهاز من قبل إدارة الصيدلية');
+              }
+            }
           }
-        }
-
-        final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 1;
-        final pName = p['name'] ?? 'صيدلية نموذجية';
-
-        // جلب أسماء الفروع النشطة
-        List<String> branchesList = ['الفرع الرئيسي'];
-        if (p['branches'] != null && p['branches'] is List) {
-          final bs = (p['branches'] as List).where((b) => b['is_active'] == true).map((b) => b['name'].toString()).toList();
-          if (bs.isNotEmpty) branchesList = bs;
+        } catch (e) {
+          debugPrint('Device registration notice: $e');
         }
 
         final config = OwnerTenantConfig(
           pharmacyId: pId,
           pharmacyName: pName,
-          licenseKey: key,
+          licenseKey: lic,
           managerName: 'المدير العام',
-          supabaseUrl: defaultUrl,
-          supabaseKey: defaultKey,
-          branches: branchesList,
+          supabaseUrl: supabaseUrl,
+          supabaseKey: supabaseKey,
+          branches: ['الفرع الرئيسي'],
         );
 
         await saveConfig(config);
         return config;
       } else {
-        throw Exception('رمز التفعيل غير مسجل في السيرفر السحابي. يرجى التأكد من الرمز أو استخدام المفتاح الافتراضي: PHARMAOS-COMMERCIAL-LIFETIME');
+        throw Exception('باركود الاتصال غير صالح أو لم يتم العثور على الصيدلية بالسيرفر.');
       }
     } catch (e) {
       if (e is Exception && !e.toString().contains('SocketException') && !e.toString().contains('TimeoutException')) {
@@ -180,6 +261,7 @@ class OwnerApiService {
         'id': 'cmd-${DateTime.now().millisecondsSinceEpoch}',
         'pharmacy_id': config.pharmacyId,
         'branch_id': branchId ?? 'main',
+        'device_id': 'mobile-owner',
         'type': type,
         'payload': payload,
         'status': 'pending',
@@ -388,13 +470,19 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/cloud_purchases?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=30';
+      final url = '${config.supabaseUrl}/rest/v1/remote_commands?pharmacy_id=eq.${config.pharmacyId}&type=eq.add_purchase_invoice&order=created_at.desc&limit=30';
       final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 8));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
         if (data is List) {
-          return data.map((j) => RemotePurchaseInvoice.fromJson(j)).toList();
+          return data.map((j) {
+            final payload = j['payload'];
+            if (payload != null && payload is Map<String, dynamic>) {
+              return RemotePurchaseInvoice.fromJson(payload);
+            }
+            return null;
+          }).whereType<RemotePurchaseInvoice>().toList();
         }
       }
     } catch (_) {}
@@ -438,23 +526,23 @@ class OwnerApiService {
     if (config == null) return false;
 
     try {
-      final msg = ChatMessage(
-        id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
-        pharmacyId: config.pharmacyId,
-        branchId: branchId ?? 'main',
-        deviceId: 'mobile-owner',
-        senderName: config.managerName,
-        senderRole: 'owner',
-        text: text,
-        audioBase64: audioBase64,
-        imageBase64: imageBase64,
-        createdAt: DateTime.now(),
-      );
+      final payload = {
+        'id': 'msg-${DateTime.now().millisecondsSinceEpoch}',
+        'pharmacy_id': config.pharmacyId,
+        'branch_id': branchId ?? 'main',
+        'device_id': 'mobile-owner',
+        'sender_name': config.managerName,
+        'sender_role': 'owner',
+        'text': text,
+        'audio_base64': audioBase64,
+        'image_base64': imageBase64,
+        'created_at': DateTime.now().toIso8601String(),
+      };
 
       final response = await http.post(
         Uri.parse('${config.supabaseUrl}/rest/v1/owner_chat_messages'),
         headers: _headers(config.supabaseKey),
-        body: jsonEncode(msg.toJson()),
+        body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 8));
 
       return response.statusCode >= 200 && response.statusCode < 300;

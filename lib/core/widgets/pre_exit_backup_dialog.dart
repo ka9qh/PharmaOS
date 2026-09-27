@@ -1,10 +1,12 @@
 // واجهة النسخ الاحتياطي الإلزامية قبل إغلاق النظام - PharmaOS
 // تظهر تلقائياً عند الضغط على زر إغلاق التطبيق لتأمين نسخة ثلاثية قبل الخروج
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../services/multi_destination_backup_service.dart';
 import '../services/official_date_time_service.dart';
+import '../services/backup_offline_queue_service.dart';
 
 class PreExitBackupDialog extends StatefulWidget {
   const PreExitBackupDialog({super.key});
@@ -24,8 +26,10 @@ class PreExitBackupDialog extends StatefulWidget {
 class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
   bool _isProcessing = true;
   bool _isCompleted = false;
-  String _currentStatus = 'جاري تحضير ملف قاعدة البيانات وتفريغ الذاكرة...';
+  bool _hasOfflineWarning = false;
+  String _currentStatus = 'جاري تحضير وتأمين ملف قاعدة البيانات وتفريغ الذاكرة...';
   bool _localSaved = false;
+  bool _driveSaved = false;
   bool _cloudVaultSaved = false;
   String _savedPath = '';
   final String _dateTimeStr = OfficialDateTimeService.formatOfficialDateTime(DateTime.now());
@@ -37,31 +41,25 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
   }
 
   Future<void> _startExitBackup() async {
-    // مؤقت أمان احتياطي لمنع التعليق إطلاقاً في حال ضعف الإنترنت
-    Future.delayed(const Duration(seconds: 8)).then((_) async {
-      if (mounted && _isProcessing) {
-        setState(() {
-          _localSaved = true;
-          _cloudVaultSaved = true;
-          _isProcessing = false;
-          _isCompleted = true;
-          _currentStatus = 'تم تأمين النسخة الاحتياطية بنجاح 100%';
-        });
-        await Future.delayed(const Duration(milliseconds: 1000));
-        await windowManager.destroy();
-      }
+    if (!mounted) return;
+    setState(() {
+      _isProcessing = true;
+      _isCompleted = false;
+      _hasOfflineWarning = false;
+      _currentStatus = 'جاري تأمين النسخة الاحتياطية وتصديرها للقنوات الثلاث...';
     });
 
     try {
-      await MultiDestinationBackupService.performFullBackup(
+      final progress = await MultiDestinationBackupService.performFullBackup(
         triggerReason: 'واجهة النسخ الإلزامية قبل إغلاق النظام',
-        onProgress: (progress) {
+        onProgress: (p) {
           if (mounted) {
             setState(() {
-              _localSaved = progress.localDone;
-              _cloudVaultSaved = progress.cloudVaultDone;
-              if (progress.localPath != null) _savedPath = progress.localPath!;
-              if (progress.message != null) _currentStatus = progress.message!;
+              _localSaved = p.localDone;
+              _driveSaved = p.driveDone;
+              _cloudVaultSaved = p.cloudVaultDone;
+              if (p.localPath != null) _savedPath = p.localPath!;
+              if (p.message != null) _currentStatus = p.message!;
             });
           }
         },
@@ -69,24 +67,37 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
 
       if (mounted) {
         setState(() {
+          _localSaved = progress.localDone;
+          _driveSaved = progress.driveDone;
+          _cloudVaultSaved = progress.cloudVaultDone;
           _isProcessing = false;
-          _isCompleted = true;
-          _currentStatus = 'تم حفظ وأمان جميع بيانات الصيدلية بنجاح 100%';
         });
-      }
 
-      // إغلاق تلقائي آمن بعد اكتمال النسخ بـ 1.2 ثانية
-      await Future.delayed(const Duration(milliseconds: 1200));
-      await windowManager.destroy();
+        if (progress.cloudVaultDone) {
+          setState(() {
+            _isCompleted = true;
+            _currentStatus = 'تم حفظ وأمان جميع بيانات الصيدلية في التيليجرام والسيرفر بنجاح 100% ✅';
+          });
+
+          // إغلاق تلقائي آمن بعد اكتمال النسخ بنجاح
+          await Future.delayed(const Duration(milliseconds: 1400));
+          await windowManager.destroy();
+        } else {
+          // لم يصل للتيليجرام/السيرفر بسبب انقطاع النت ولكن حُفظ محلياً وجُدول للمزامنة
+          setState(() {
+            _hasOfflineWarning = true;
+            _currentStatus = 'تم حفظ النسخة محلياً بنجاح، وتعذر الاتصال بالسحابة حالياً. تم حفظها في قائمة الانتظار للمزامنة فور توفر الإنترنت.';
+          });
+        }
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isProcessing = false;
-          _currentStatus = 'تم تأمين البيانات محلياً وسيتم الإغلاق الآن: $e';
+          _hasOfflineWarning = true;
+          _currentStatus = 'تم حفظ البيانات محلياً وسيتم رفعها للسحابة لاحقاً: $e';
         });
       }
-      await Future.delayed(const Duration(milliseconds: 1200));
-      await windowManager.destroy();
     }
   }
 
@@ -104,7 +115,7 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.3)),
+              border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
               gradient: const LinearGradient(
                 colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
                 begin: Alignment.topCenter,
@@ -119,13 +130,19 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: _isCompleted
-                        ? Colors.greenAccent.withValues(alpha: 0.15)
-                        : Colors.cyanAccent.withValues(alpha: 0.15),
+                        ? Colors.greenAccent.withOpacity(0.15)
+                        : (_hasOfflineWarning
+                            ? Colors.amberAccent.withOpacity(0.15)
+                            : Colors.cyanAccent.withOpacity(0.15)),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    _isCompleted ? Icons.check_circle_rounded : Icons.shield_rounded,
-                    color: _isCompleted ? Colors.greenAccent : Colors.cyanAccent,
+                    _isCompleted
+                        ? Icons.check_circle_rounded
+                        : (_hasOfflineWarning ? Icons.cloud_off_rounded : Icons.shield_rounded),
+                    color: _isCompleted
+                        ? Colors.greenAccent
+                        : (_hasOfflineWarning ? Colors.amberAccent : Colors.cyanAccent),
                     size: 44,
                   ),
                 ),
@@ -159,15 +176,17 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
                 _buildChannelTile(
                   icon: Icons.cloud_sync_rounded,
                   title: 'مزامنة الحساب السحابي وجوجل درايف',
-                  subtitle: 'مزامنة فورية للمجلدات السحابية',
-                  isDone: _localSaved,
-                  isLoading: _isProcessing && !_localSaved,
+                  subtitle: _driveSaved ? 'تمت المزامنة مع مجلد السحابة' : 'مزامنة المجلدات السحابية',
+                  isDone: _driveSaved || _localSaved,
+                  isLoading: _isProcessing && !_driveSaved,
                 ),
                 const SizedBox(height: 12),
                 _buildChannelTile(
-                  icon: Icons.verified_user_rounded,
-                  title: 'الخزينة السحابية الفورية المشفرة',
-                  subtitle: 'إيداع وحماية مشفرة 100%',
+                  icon: Icons.send_and_archive_rounded,
+                  title: 'الخزينة السحابية (Telegram Bot & Supabase)',
+                  subtitle: _cloudVaultSaved
+                      ? 'تم الإرسال والتأمين في البوت والسيرفر بنجاح ✅'
+                      : (_hasOfflineWarning ? 'معلقة بانتظار اتصال الإنترنت ⏳' : 'جاري الإرسال السحابي المشفر...'),
                   isDone: _cloudVaultSaved,
                   isLoading: _isProcessing && !_cloudVaultSaved,
                 ),
@@ -189,23 +208,48 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
                       ),
                     ],
                   )
-                else
+                else if (_isCompleted)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     decoration: BoxDecoration(
-                      color: Colors.greenAccent.withValues(alpha: 0.1),
+                      color: Colors.greenAccent.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
+                      border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(Icons.verified_rounded, color: Colors.greenAccent, size: 20),
                         const SizedBox(width: 8),
-                        Text(
-                          _currentStatus,
-                          style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold),
+                        Expanded(
+                          child: Text(
+                            _currentStatus,
+                            style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_hasOfflineWarning)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.amberAccent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.wifi_off_rounded, color: Colors.amberAccent, size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _currentStatus,
+                            style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+                          ),
                         ),
                       ],
                     ),
@@ -213,23 +257,57 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
 
                 const SizedBox(height: 20),
 
-                // زر الإغلاق الفوري
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white70,
-                      side: const BorderSide(color: Colors.white24),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                // أزرار التحكم
+                if (_hasOfflineWarning)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white70,
+                            side: const BorderSide(color: Colors.white24),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.power_settings_new_rounded, size: 18),
+                          label: const Text('تخطي والإغلاق الآن'),
+                          onPressed: () async {
+                            await windowManager.destroy();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.cyan,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('إعادة المحاولة 🔄'),
+                          onPressed: _startExitBackup,
+                        ),
+                      ),
+                    ],
+                  )
+                else if (!_isProcessing)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.power_settings_new_rounded, size: 18),
+                      label: const Text('إغلاق النظام الآن'),
+                      onPressed: () async {
+                        await windowManager.destroy();
+                      },
                     ),
-                    icon: const Icon(Icons.power_settings_new_rounded, size: 18),
-                    label: const Text('إغلاق النظام الآن'),
-                    onPressed: () async {
-                      await windowManager.destroy();
-                    },
                   ),
-                ),
               ],
             ),
           ),
@@ -252,8 +330,8 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isDone
-              ? Colors.greenAccent.withValues(alpha: 0.3)
-              : Colors.white.withValues(alpha: 0.05),
+              ? Colors.greenAccent.withOpacity(0.3)
+              : Colors.white.withOpacity(0.05),
         ),
       ),
       child: Row(
@@ -262,8 +340,8 @@ class _PreExitBackupDialogState extends State<PreExitBackupDialog> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isDone
-                  ? Colors.greenAccent.withValues(alpha: 0.15)
-                  : Colors.white.withValues(alpha: 0.05),
+                  ? Colors.greenAccent.withOpacity(0.15)
+                  : Colors.white.withOpacity(0.05),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
