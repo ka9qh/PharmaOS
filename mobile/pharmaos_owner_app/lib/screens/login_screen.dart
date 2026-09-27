@@ -1,5 +1,6 @@
 // شاشة تسجيل الدخول والربط السحابي بمسح الباركود - PharmaOS Owner App
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/owner_api_service.dart';
 import '../theme/owner_theme.dart';
@@ -47,6 +48,29 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _processQrScanned(String rawValue) async {
     if (rawValue.trim().isEmpty) return;
 
+    // 1. فحص اتصال الإنترنت قبل البدء
+    final isOnline = await OwnerApiService.hasInternetConnection();
+    if (!isOnline) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _statusText = '';
+          _errorMessage = '⚠️ لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل شبكة Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '⚠️ الهاتف غير متصل بالإنترنت. يرجى تفعيل Wi-Fi أو البيانات أولاً للربط بالسيرفر.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -78,9 +102,26 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// فتح ماسح الباركود وQR Code بالكاميرا
-  void _openQrScanner() {
+  /// فتح ماسح الباركود وQR Code بالكاميرا مع معالجة كاملة للأجهزة القديمة
+  Future<void> _openQrScanner() async {
     setState(() => _errorMessage = null);
+
+    // التحقق من الإنترنت قبل تشغيل الكاميرا
+    final isOnline = await OwnerApiService.hasInternetConnection();
+    if (!isOnline) {
+      if (mounted) {
+        _showNoInternetDialog();
+      }
+      return;
+    }
+
+    final controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.normal,
+      facing: CameraFacing.back,
+      torchEnabled: false,
+    );
+
+    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -89,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: Container(
-          height: MediaQuery.of(context).size.height * 0.8,
+          height: MediaQuery.of(context).size.height * 0.85,
           decoration: const BoxDecoration(
             color: Color(0xFF0F172A),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -119,7 +160,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.close_rounded, color: Colors.grey),
-                      onPressed: () => Navigator.pop(ctx),
+                      onPressed: () {
+                        controller.dispose();
+                        Navigator.pop(ctx);
+                      },
                     ),
                   ],
                 ),
@@ -131,7 +175,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.3),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
+              // شاشة الكاميرا مع معالجة الخطأ
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
@@ -139,11 +185,53 @@ class _LoginScreenState extends State<LoginScreen> {
                     alignment: Alignment.center,
                     children: [
                       MobileScanner(
+                        controller: controller,
+                        errorBuilder: (context, error, child) {
+                          return Container(
+                            color: const Color(0xFF1E293B),
+                            padding: const EdgeInsets.all(24),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.videocam_off_rounded, color: Colors.amber, size: 48),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'تعذر تشغيل الكاميرا تلقائياً على هذا الهاتف',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'يمكنك منح إذن الكاميرا أو استخدام الإدخال اليدوي المباشر لكود الترخيص',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  ElevatedButton.icon(
+                                    onPressed: () {
+                                      controller.dispose();
+                                      Navigator.pop(ctx);
+                                      _openManualEntryDialog();
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF10B981),
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    icon: const Icon(Icons.edit_note_rounded),
+                                    label: const Text('📝 إدخال الكود يدوياً'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                         onDetect: (capture) {
                           final List<Barcode> barcodes = capture.barcodes;
                           for (final barcode in barcodes) {
                             final rawValue = barcode.rawValue?.trim();
                             if (rawValue != null && rawValue.isNotEmpty) {
+                              controller.dispose();
                               Navigator.pop(ctx);
                               _processQrScanned(rawValue);
                               break;
@@ -153,8 +241,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       // إطار توجيه المسح
                       Container(
-                        width: 250,
-                        height: 250,
+                        width: 240,
+                        height: 240,
                         decoration: BoxDecoration(
                           border: Border.all(color: const Color(0xFF10B981), width: 3),
                           borderRadius: BorderRadius.circular(24),
@@ -171,9 +259,169 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // أزرار التحكم والبدائل أسفل الماسح
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    // زر الفلاش
+                    IconButton.filledTonal(
+                      onPressed: () => controller.toggleTorch(),
+                      icon: const Icon(Icons.flash_on_rounded, color: Colors.amber),
+                      style: IconButton.styleFrom(backgroundColor: Colors.white10),
+                    ),
+                    const SizedBox(width: 8),
+                    // زر قلب الكاميرا
+                    IconButton.filledTonal(
+                      onPressed: () => controller.switchCamera(),
+                      icon: const Icon(Icons.flip_camera_android_rounded, color: Colors.white),
+                      style: IconButton.styleFrom(backgroundColor: Colors.white10),
+                    ),
+                    const SizedBox(width: 8),
+                    // زر الإدخال اليدوي
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          controller.dispose();
+                          Navigator.pop(ctx);
+                          _openManualEntryDialog();
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF34D399),
+                          side: const BorderSide(color: Color(0xFF10B981)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.keyboard_rounded, size: 18),
+                        label: const Text('إدخال الكود يدوياً', style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// حوار تنبيه انقطاع الإنترنت
+  void _showNoInternetDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.wifi_off_rounded, color: Colors.amber, size: 28),
+              SizedBox(width: 10),
+              Text('لا يوجد اتصال بالإنترنت', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            'الهاتف غير متصل بالإنترنت حالياً.\n\nيرجى التأكد من تشغيل شبكة Wi-Fi أو بيانات الهاتف المحمول لتتمكن من مسح الباركود والربط بالسيرفر السحابي وقاعدة بيانات الصيدلية.',
+            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('حسناً، فهمت'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// حوار إدخال كود الترخيص أو رمز الربط يدوياً
+  void _openManualEntryDialog() {
+    final textController = TextEditingController(text: 'PHARMAOS-COMMERCIAL-LIFETIME');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.vpn_key_rounded, color: Color(0xFF10B981), size: 26),
+              SizedBox(width: 10),
+              Text('الربط اليدوي بكود الترخيص', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'أدخل كود الترخيص أو الصق النص الكامل المشفر المعروض بنظام الكمبيوتر:',
+                style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.3),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: textController,
+                maxLines: 3,
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
+                decoration: InputDecoration(
+                  hintText: 'PHARMAOS-COMMERCIAL-LIFETIME أو كود JSON...',
+                  hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
+                  filled: true,
+                  fillColor: const Color(0xFF0F172A),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF334155))),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF10B981), width: 2)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      final data = await Clipboard.getData(Clipboard.kTextPlain);
+                      if (data?.text != null && data!.text!.isNotEmpty) {
+                        textController.text = data.text!.trim();
+                      }
+                    },
+                    icon: const Icon(Icons.paste_rounded, size: 16, color: Color(0xFF34D399)),
+                    label: const Text('لصق من الحافظة', style: TextStyle(fontSize: 12, color: Color(0xFF34D399))),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () {
+                      textController.text = 'PHARMAOS-COMMERCIAL-LIFETIME';
+                    },
+                    child: const Text('كود الصيدلية الأساسية', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('تأكيد والربط السحابي'),
+              onPressed: () {
+                final text = textController.text.trim();
+                Navigator.pop(ctx);
+                if (text.isNotEmpty) {
+                  _processQrScanned(text);
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -252,7 +500,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'لربط هذا الهاتف بالصيدلية، اضغط الزر أدناه وصور باركود الاتصال المعروض في نظام الكمبيوتر (الإعدادات > بيانات الترخيص والأجهزة المتصلة).',
+                            'لربط هذا الهاتف بالصيدلية، تأكد من اتصال الإنترنت ثم صور باركود الاتصال المعروض في نظام الكمبيوتر (الإعدادات > بيانات الترخيص والأجهزة المتصلة).',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 12,
@@ -274,10 +522,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             )
-                          else
+                          else ...[
                             SizedBox(
                               width: double.infinity,
-                              height: 56,
+                              height: 54,
                               child: ElevatedButton.icon(
                                 onPressed: _openQrScanner,
                                 style: ElevatedButton.styleFrom(
@@ -294,6 +542,25 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                onPressed: _openManualEntryDialog,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF34D399),
+                                  side: BorderSide(color: const Color(0xFF10B981).withOpacity(0.6)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                icon: const Icon(Icons.keyboard_rounded, size: 20),
+                                label: const Text(
+                                  '📝 إدخال كود الترخيص يدوياً',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ],
 
                           if (_errorMessage != null) ...[
                             const SizedBox(height: 16),
@@ -305,6 +572,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
                               ),
                               child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
                                   const SizedBox(width: 8),

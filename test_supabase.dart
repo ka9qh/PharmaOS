@@ -11,6 +11,9 @@ void main() async {
     'Content-Type': 'application/json',
   };
 
-  final res = await http.get(Uri.parse('$supabaseUrl/rest/v1/pharmacies?select=*'), headers: headers);
-  print('Supabase connected: ${res.statusCode}');
+  final res1 = await http.get(Uri.parse('$supabaseUrl/rest/v1/pharmacies?id=eq.2&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'), headers: headers);
+  print('Query with specific columns status: ${res1.statusCode} - body: ${res1.body}');
+
+  final res2 = await http.get(Uri.parse('$supabaseUrl/rest/v1/pharmacies?id=eq.2&select=id,name,license_key,is_active&limit=1'), headers: headers);
+  print('Query with basic columns status: ${res2.statusCode} - body: ${res2.body}');
 }

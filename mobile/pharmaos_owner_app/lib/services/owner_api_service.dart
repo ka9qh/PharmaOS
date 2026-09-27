@@ -1,6 +1,7 @@
 // خدمة الاتصال السحابي والأوامر الحية الشاملة لتطبيق المدير - PharmaOS Owner App
 import 'dart:convert';
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,31 @@ class OwnerApiService {
   static const String _prefSupabaseKey = 'owner_supabase_key_v1';
   static const String _prefBranchesList = 'owner_branches_list_v1';
   static const String _prefDeviceFingerprint = 'owner_device_fingerprint_v1';
+
+  /// فحص توفر اتصال حقيقي بالإنترنت قبل محاولة مسح الباركود أو الربط
+  static Future<bool> hasInternetConnection() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none) && connectivityResult.length == 1) {
+        return false;
+      }
+      final response = await http.get(
+        Uri.parse('https://bwgilcmzffcwdcxhfyfk.supabase.co/rest/v1/pharmacies?select=id&limit=1'),
+        headers: {
+          'apikey': 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+          'Authorization': 'Bearer sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+        },
+      ).timeout(const Duration(seconds: 4));
+      return response.statusCode >= 200 && response.statusCode < 500;
+    } catch (_) {
+      try {
+        final res = await http.get(Uri.parse('https://www.google.com')).timeout(const Duration(seconds: 3));
+        return res.statusCode == 200;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
 
   static Future<String> getOrCreateDeviceFingerprint() async {
     final prefs = await SharedPreferences.getInstance();
@@ -96,6 +122,12 @@ class OwnerApiService {
       throw Exception('يرجى تصوير باركود الاتصال المعروض في شاشة النظام');
     }
 
+    // 0. التحقق من توفر الإنترنت الحقيقي أولاً
+    final isOnline = await hasInternetConnection();
+    if (!isOnline) {
+      throw Exception('لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.');
+    }
+
     final defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
     final defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
 
@@ -135,10 +167,10 @@ class OwnerApiService {
     try {
       dynamic pharmacyData;
 
-      // البحث في Supabase بالمعرف أو بمفتاح الترخيص
+      // البحث في Supabase بالمعرف أو بمفتاح الترخيص باستخدام الأعمدة الأساسية المضمونة
       if (parsedPharmacyId != null) {
         final res = await http.get(
-          Uri.parse('$supabaseUrl/rest/v1/pharmacies?id=eq.$parsedPharmacyId&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'),
+          Uri.parse('$supabaseUrl/rest/v1/pharmacies?id=eq.$parsedPharmacyId&select=id,name,license_key,is_active&limit=1'),
           headers: _headers(supabaseKey),
         ).timeout(const Duration(seconds: 10));
 
@@ -152,7 +184,7 @@ class OwnerApiService {
 
       if (pharmacyData == null && parsedLicenseKey != null && parsedLicenseKey.isNotEmpty) {
         final res = await http.get(
-          Uri.parse('$supabaseUrl/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(parsedLicenseKey)}&select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'),
+          Uri.parse('$supabaseUrl/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(parsedLicenseKey)}&select=id,name,license_key,is_active&limit=1'),
           headers: _headers(supabaseKey),
         ).timeout(const Duration(seconds: 10));
 
@@ -167,7 +199,7 @@ class OwnerApiService {
       // Fallback ذكي للصيدلية الأساسية
       if (pharmacyData == null) {
         final res = await http.get(
-          Uri.parse('$supabaseUrl/rest/v1/pharmacies?select=id,name,is_active,paused_by_admin,subscription_type,subscription_end&limit=1'),
+          Uri.parse('$supabaseUrl/rest/v1/pharmacies?select=id,name,license_key,is_active&limit=1'),
           headers: _headers(supabaseKey),
         ).timeout(const Duration(seconds: 10));
 
@@ -181,13 +213,13 @@ class OwnerApiService {
 
       if (pharmacyData != null) {
         final p = pharmacyData;
-        if (p['is_active'] == false || p['paused_by_admin'] == true) {
+        if (p['is_active'] == false) {
           throw Exception('هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
         }
 
         final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 2;
         final pName = p['name'] ?? parsedPharmacyName ?? 'صيدلية نموذجية';
-        final lic = parsedLicenseKey ?? 'PHARMAOS-COMMERCIAL-LIFETIME';
+        final lic = p['license_key'] ?? parsedLicenseKey ?? 'PHARMAOS-COMMERCIAL-LIFETIME';
 
         // 2. تسجيل الجهاز في جدول branches لتمكين التحكم به وإيقافه من سطح المكتب
         final deviceFp = await getOrCreateDeviceFingerprint();
@@ -211,7 +243,7 @@ class OwnerApiService {
                 body: jsonEncode({
                   'pharmacy_id': pId,
                   'name': deviceName,
-                  'branch_activation_key': lic,
+                  'branch_activation_key': 'OWNER-$deviceFp',
                   'device_fingerprint': deviceFp,
                   'is_active': true,
                 }),

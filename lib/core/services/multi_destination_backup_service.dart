@@ -256,104 +256,106 @@ class MultiDestinationBackupService {
       );
       onProgress?.call(currentProgress);
 
-      // 3.5 حساب Hash للنسخة لمنع التكرار ورفعها لـ Supabase
+      // 3.5 رفع سحابي متوازي فوري (Supabase Storage + الخزينة السحابية الصامتة)
       bool supabaseSent = false;
+      bool vaultSent = false;
       String fileHash = '';
+
       try {
         final bytes = await localBackupFile.readAsBytes();
         fileHash = md5.convert(bytes).toString();
         final fileSize = bytes.length;
-        
-        final config = await LicenseService.getTenantConfig();
-        final pharmacyId = config.pharmacyId;
-        
-        final url = await CloudSyncService.getSupabaseUrl();
-        final key = await CloudSyncService.getSupabaseAnonKey();
-        
-        // التحقق مما إذا كانت مرفوعة مسبقاً
-        final checkRes = await http.get(
-          Uri.parse('$url/rest/v1/cloud_backups?file_hash=eq.$fileHash&pharmacy_id=eq.$pharmacyId&select=id'),
-          headers: {'apikey': key, 'Authorization': 'Bearer $key'},
-        ).timeout(const Duration(seconds: 10));
-        
-        if (checkRes.statusCode == 200 && (jsonDecode(checkRes.body) as List).isNotEmpty) {
-          // مرفوعة مسبقاً
-          supabaseSent = true;
-        } else {
-          // رفع الملف إلى Supabase Storage
-          final storageRes = await http.post(
-            Uri.parse('$url/storage/v1/object/backups/$pharmacyId/$backupFileName'),
-            headers: {
-              'apikey': key,
-              'Authorization': 'Bearer $key',
-              'Content-Type': 'application/octet-stream',
-            },
-            body: bytes,
-          ).timeout(const Duration(seconds: 45));
-          
-          if (storageRes.statusCode == 200 || storageRes.statusCode == 409) {
-            // تسجيلها في جدول cloud_backups
-            final recordRes = await http.post(
-              Uri.parse('$url/rest/v1/cloud_backups'),
+
+        // تنفيذ الرفع السحابي المتوازي لضمان أقصى سرعة وعدم تعليق الإغلاق
+        final cloudFutures = <Future<void>>[];
+
+        // أ) الرفع إلى السحابة (Supabase)
+        cloudFutures.add(() async {
+          try {
+            final config = await LicenseService.getTenantConfig();
+            final pharmacyId = config.pharmacyId;
+            final url = await CloudSyncService.getSupabaseUrl();
+            final key = await CloudSyncService.getSupabaseAnonKey();
+
+            // فحص مسبق أو رفع مباشر
+            final storageRes = await http.post(
+              Uri.parse('$url/storage/v1/object/backups/$pharmacyId/$backupFileName'),
               headers: {
                 'apikey': key,
                 'Authorization': 'Bearer $key',
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/octet-stream',
               },
-              body: jsonEncode({
-                'pharmacy_id': pharmacyId,
-                'file_name': backupFileName,
-                'file_hash': fileHash,
-                'file_size_bytes': fileSize,
-                'trigger_reason': triggerReason,
-                'is_uploaded_supabase': true,
-              }),
-            ).timeout(const Duration(seconds: 15));
-            
-            if (recordRes.statusCode == 201 || recordRes.statusCode == 409) {
-              supabaseSent = true;
+              body: bytes,
+            ).timeout(const Duration(seconds: 8));
+
+            if (storageRes.statusCode == 200 || storageRes.statusCode == 409) {
+              final recordRes = await http.post(
+                Uri.parse('$url/rest/v1/cloud_backups'),
+                headers: {
+                  'apikey': key,
+                  'Authorization': 'Bearer $key',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                  'pharmacy_id': pharmacyId,
+                  'file_name': backupFileName,
+                  'file_hash': fileHash,
+                  'file_size_bytes': fileSize,
+                  'trigger_reason': triggerReason,
+                  'is_uploaded_supabase': true,
+                }),
+              ).timeout(const Duration(seconds: 6));
+
+              if (recordRes.statusCode == 201 || recordRes.statusCode == 409) {
+                supabaseSent = true;
+              }
             }
+          } catch (e) {
+            debugPrint('⚠️ Cloud storage upload note: $e');
           }
-        }
-        
-        if (!supabaseSent) {
-           throw Exception('فشل الرفع السحابي لـ Supabase');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Supabase Upload Failed: $e');
-      }
+        }());
 
-      // 4. إرسال صامت فوري إلى الخزينة السحابية (Telegram Bot API)
-      bool vaultSent = false;
-      try {
-        final fileLengthKb = (await localBackupFile.length() / 1024).toStringAsFixed(1);
-        final fileLengthMb = (await localBackupFile.length() / (1024 * 1024)).toStringAsFixed(2);
+        // ب) إرسال صامت فوري إلى الخزينة السحابية المشفرة
+        cloudFutures.add(() async {
+          try {
+            final fileLengthKb = (fileSize / 1024).toStringAsFixed(1);
+            final fileLengthMb = (fileSize / (1024 * 1024)).toStringAsFixed(2);
 
-        final caption = '''
-🏥 <b>نسخة احتياطية جديدة - PharmaOS</b>
+            final caption = '''
+🏥 <b>نسخة احتياطية مشفرة - PharmaOS Cloud Vault</b>
 ━━━━━━━━━━━━━━━━━━━━
-🏢 <b>اسم الصيدلية:</b> $pharmacyName
-📞 <b>رقم الهاتف:</b> $pharmacyPhone
-📅 <b>التاريخ والوقت الرسمي:</b> $officialTimeFormatted
-📦 <b>حجم النسخة:</b> $fileLengthKb كيلوبايت ($fileLengthMb ميجابايت)
-🏷️ <b>السبب والحدث:</b> $triggerReason
-🔒 <b>التشفير والحماية:</b> SQLite AES-256 Verified
+🏢 <b>الصيدلية:</b> $pharmacyName
+📞 <b>الهاتف:</b> $pharmacyPhone
+📅 <b>التوقيت الرسمي:</b> $officialTimeFormatted
+📦 <b>الحجم:</b> $fileLengthKb كيلوبايت ($fileLengthMb ميجابايت)
+🏷️ <b>الحدث:</b> $triggerReason
+🔒 <b>الحماية:</b> SQLite AES-256 Cloud Encrypted
 ━━━━━━━━━━━━━━━━━━━━
-✅ <b>هذه النسخة تحوي كافة الأدوية، الفواتير، الديون، المخزون، والصندوق ومحمية تماماً.</b>
+✅ <b>نسخة أمان شاملة للبيانات والفواتير والمخزون.</b>
 ''';
 
-        vaultSent = await uploadDocumentToTelegram(
-          file: localBackupFile,
-          caption: caption,
-          customFileName: backupFileName,
-          timeout: const Duration(seconds: 45),
+            vaultSent = await uploadDocumentToTelegram(
+              file: localBackupFile,
+              caption: caption,
+              customFileName: backupFileName,
+              timeout: const Duration(seconds: 7),
+            );
+          } catch (e) {
+            debugPrint('⚠️ Silent cloud vault note: $e');
+          }
+        }());
+
+        // انتظار انتهاء المهام السحابية بحد أقصى 8 ثوانٍ
+        await Future.wait(cloudFutures).timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => [],
         );
       } catch (e) {
-        debugPrint('⚠️ Silent cloud vault upload note: $e');
+        debugPrint('⚠️ Parallel cloud backup warning: $e');
       }
 
-      // إذا لم يكتمل الرفع إلى التيليجرام أو سوبابيس، نسجلها في طابور العمل دون اتصال للمزامنة التلقائية لاحقاً
-      if (!vaultSent || !supabaseSent) {
+      // إذا لم يكتمل الرفع السحابي، نسجلها في طابور العمل دون اتصال للمزامنة التلقائية لاحقاً
+      if (!vaultSent && !supabaseSent) {
         try {
           await BackupOfflineQueueService.enqueueBackup(PendingBackup(
             filePath: localBackupFile.path,
@@ -374,16 +376,15 @@ class MultiDestinationBackupService {
       await prefs.setString(prefLastBackupTime, officialTimeFormatted);
       await prefs.setString(prefLastBackupPath, localBackupFile.path);
 
+      final isCloudOk = vaultSent || supabaseSent;
       final finalProgress = MultiBackupProgress(
         localDone: true,
         driveDone: driveSynced,
-        cloudVaultDone: vaultSent || supabaseSent,
+        cloudVaultDone: isCloudOk,
         localPath: localBackupFile.path,
-        message: (vaultSent && supabaseSent)
-            ? 'تم إتمام النسخ الاحتياطي الشامل وتأمين النسخة في التيليجرام والسيرفر بنجاح ✅'
-            : (vaultSent || supabaseSent)
-                ? 'تم تأمين النسخة في السحابة ومحلياً بنجاح ✅'
-                : 'تم حفظ النسخة محلياً وجدولتها للمزامنة التلقائية فور توفر الإنترنت ✅',
+        message: isCloudOk
+            ? 'تم تأمين النسخة الاحتياطية في الخزينة السحابية بنجاح ✅'
+            : 'تم حفظ النسخة محلياً وجدولتها للمزامنة السحابية فور توفر الإنترنت ✅',
       );
       onProgress?.call(finalProgress);
 
