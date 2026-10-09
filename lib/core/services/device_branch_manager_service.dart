@@ -5,8 +5,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../features/settings/domain/repositories/settings_repository.dart';
-import '../di/service_locator.dart';
 
 import 'cloud_sync_service.dart';
 import 'license_service.dart';
@@ -176,47 +174,50 @@ class DeviceBranchManagerService {
     await prefs.setString(_prefDevicesList, raw);
   }
 
-  /// إنشاء فرع جديد وتوليد رمز تفعيل واقتران فريد له ورفعه للسحابة
+  /// إنشاء فرع جديد وتوليد رمز تفعيل واقتران قصير فريد له ورفعه للسحابة
   static Future<BranchConfig> addBranch({required String name, required String code}) async {
-    final branches = await getBranches();
+    final tenantConfig = await LicenseService.getTenantConfig();
     
-    String? pharmacyId;
-    try {
-      final tenantConfig = await LicenseService.getTenantConfig();
-      pharmacyId = tenantConfig.pharmacyId;
-    } catch (_) {}
+    // التحقق الصارم: حظر إنشاء الفروع للتراخيص الفردية
+    if (tenantConfig.licenseType != 'multi_branch') {
+      throw Exception('عذراً، هذا الترخيص مخصص لصيدلية فردية فقط (جهاز مستقل).\nلا يسمح بإنشاء فروع إضافية إلا بعد الترقية لباقة الفروع المتعددة.');
+    }
+
+    final branches = await getBranches();
+    final pId = int.tryParse(tenantConfig.pharmacyId) ?? 2;
+    
+    // توليد رمز تفعيل فرع فريد وقصير وسهل الحفظ
+    final shortToken = _generateShortBranchToken(code, pId);
 
     final newBranch = BranchConfig(
       id: 'br-${DateTime.now().millisecondsSinceEpoch}',
       name: name,
       code: code,
-      token: _generateSecureToken(code, pharmacyId: pharmacyId),
+      token: shortToken,
       createdAt: DateTime.now(),
     );
     branches.add(newBranch);
     await saveBranches(branches);
 
-    // مزامنة الفرع مع Supabase
+    // مزامنة الفرع الجديد ورمزه فورياً مع Supabase
     try {
-      final tenantConfig = await LicenseService.getTenantConfig();
-      if (tenantConfig.isActivated) {
-        final url = await CloudSyncService.getSupabaseUrl();
-        final key = await CloudSyncService.getSupabaseAnonKey();
-        await http.post(
-          Uri.parse('$url/rest/v1/branches'),
-          headers: {
-            'apikey': key,
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'pharmacy_id': tenantConfig.pharmacyId,
-            'name': name,
-            'branch_activation_key': newBranch.token,
-            'is_active': true,
-          }),
-        );
-      }
+      final url = await CloudSyncService.getSupabaseUrl();
+      final key = await CloudSyncService.getSupabaseAnonKey();
+      await http.post(
+        Uri.parse('$url/rest/v1/branches'),
+        headers: {
+          'apikey': key,
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: jsonEncode({
+          'pharmacy_id': pId,
+          'name': name,
+          'branch_activation_key': shortToken,
+          'is_active': true,
+        }),
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
       debugPrint('Failed to sync branch to cloud: $e');
     }
@@ -265,6 +266,16 @@ class DeviceBranchManagerService {
     await saveBranches(branches);
   }
 
+  /// توليد رمز تفعيل وقصير ومميز لكل فرع (مثال: BR02-7K4M)
+  static String _generateShortBranchToken(String code, int pharmacyId) {
+    final cleanCode = code.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+    final cPrefix = cleanCode.isNotEmpty ? cleanCode : 'BR';
+    final random = Random.secure();
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    final part = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
+    return '$cPrefix-$part';
+  }
+
   /// توليد رمز تفعيل واقتران فريد ومحمي
   static String _generateSecureToken(String prefix, {String? pharmacyId}) {
     final random = Random.secure();
@@ -274,7 +285,6 @@ class DeviceBranchManagerService {
     final part3 = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
     
     if (pharmacyId != null && pharmacyId.isNotEmpty) {
-       // تشفير معرف الصيدلية في الرمز لضمان عدم تداخله مع صيدليات أخرى أبداً
        String phPrefix = pharmacyId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
        if (phPrefix.length > 4) phPrefix = phPrefix.substring(0, 4);
        if (phPrefix.isEmpty) phPrefix = 'PHAR';

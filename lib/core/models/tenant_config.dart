@@ -19,6 +19,9 @@ class TenantConfig {
   final DateTime? subscriptionEnd; // تاريخ انتهاء الاشتراك
   final bool pausedByAdmin; // هل تم إيقاف الصيدلية من قبل الإدارة؟
 
+  bool get canCreateBranches => licenseType == 'multi_branch';
+  bool get isSinglePharmacy => licenseType == 'single';
+
   const TenantConfig({
     this.pharmacyId = '2',
     this.pharmacyName = 'صيدلية نموذجية',

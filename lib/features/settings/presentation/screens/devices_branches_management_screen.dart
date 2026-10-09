@@ -120,12 +120,62 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
               Navigator.pop(ctx);
-              await DeviceBranchManagerService.addBranch(
-                name: nameController.text.trim(),
-                code: codeController.text.trim(),
-              );
-              await _loadData();
+              try {
+                final newB = await DeviceBranchManagerService.addBranch(
+                  name: nameController.text.trim(),
+                  code: codeController.text.trim(),
+                );
+                await _loadData();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('تم إنشاء الفرع بنجاح وتوليد الرمز القصير: ${newB.token}'),
+                      backgroundColor: Colors.teal,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.toString().replaceAll('Exception: ', '')),
+                      backgroundColor: Colors.redAccent,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUpgradeToMultiBranchDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_rounded, color: Colors.amber),
+            SizedBox(width: 8),
+            Text('ترخيص صيدلية فردية'),
+          ],
+        ),
+        content: const Text(
+          'عذراً، هذا الترخيص مخصص لصيدلية فردية فقط (جهاز مستقل).\n\n'
+          'لإضافة فروع متعددة وتوليد رموز تفعيل خاصة لكل فرع ومزامنتها سحابياً، '
+          'يرجى ترقية الترخيص إلى باقة PharmaOS متعددة الفروع من إدارة النظام.',
+          style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('حسناً، فهمت'),
           ),
         ],
       ),
@@ -444,24 +494,41 @@ class _DevicesBranchesManagementScreenState extends State<DevicesBranchesManagem
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.storefront_rounded, color: Colors.teal, size: 20),
-                  SizedBox(width: 8),
-                  Text(
+                  const Icon(Icons.storefront_rounded, color: Colors.teal, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
                     'قائمة فروع الصيدلية المعتمدة',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isPro ? Colors.teal.withOpacity(0.1) : Colors.amber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: isPro ? Colors.teal : Colors.amber.shade700),
+                    ),
+                    child: Text(
+                      isPro ? 'متعدد الفروع' : 'ترخيص فردي 🔒',
+                      style: TextStyle(
+                        color: isPro ? Colors.teal.shade800 : Colors.amber.shade900,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
               FilledButton.icon(
-                icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text('إضافة فرع'),
+                icon: Icon(isPro ? Icons.add_rounded : Icons.lock_outline_rounded, size: 16),
+                label: Text(isPro ? 'إضافة فرع' : 'إضافة فرع (مغلق)'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: isPro ? Colors.teal : Colors.grey,
+                  backgroundColor: isPro ? Colors.teal : const Color(0xFF64748B),
                   visualDensity: VisualDensity.compact,
                 ),
-                onPressed: isPro ? _showAddBranchDialog : null,
+                onPressed: isPro ? _showAddBranchDialog : _showUpgradeToMultiBranchDialog,
               ),
             ],
           ),

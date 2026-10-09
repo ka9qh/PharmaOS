@@ -28,39 +28,38 @@ class RemoteCommand {
 
   factory RemoteCommand.fromJson(Map<String, dynamic> json) {
     Map<String, dynamic> payloadMap = {};
-    if (json['payload'] != null) {
-      if (json['payload'] is Map) {
-        payloadMap = Map<String, dynamic>.from(json['payload']);
-      } else if (json['payload'] is String) {
+    final rawPayload = json['command_payload'] ?? json['payload'];
+    if (rawPayload != null) {
+      if (rawPayload is Map) {
+        payloadMap = Map<String, dynamic>.from(rawPayload);
+      } else if (rawPayload is String) {
         try {
-          payloadMap = jsonDecode(json['payload']);
+          payloadMap = jsonDecode(rawPayload);
         } catch (_) {}
       }
     }
 
     return RemoteCommand(
-      id: json['id']?.toString() ?? 'cmd-${DateTime.now().millisecondsSinceEpoch}',
+      id: json['id']?.toString() ?? '',
       pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
       branchId: json['branch_id']?.toString(),
       deviceId: json['device_id']?.toString(),
-      type: json['type'] ?? 'unknown',
+      type: json['command_type']?.toString() ?? json['type']?.toString() ?? 'unknown',
       payload: payloadMap,
-      status: json['status'] ?? 'pending',
-      resultMessage: json['result_message']?.toString(),
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
-      executedAt: json['executed_at'] != null ? DateTime.tryParse(json['executed_at']) : null,
+      status: json['status']?.toString() ?? 'pending',
+      resultMessage: json['error_message']?.toString() ?? json['result_message']?.toString(),
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
+      executedAt: json['executed_at'] != null ? DateTime.tryParse(json['executed_at'].toString()) : null,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'pharmacy_id': pharmacyId,
-        'branch_id': branchId,
-        'device_id': deviceId,
-        'type': type,
-        'payload': payload,
+        'branch_id': branchId != null ? int.tryParse(branchId!) : null,
+        'command_type': type,
+        'command_payload': payload,
         'status': status,
-        'result_message': resultMessage,
         'created_at': createdAt.toIso8601String(),
         'executed_at': executedAt?.toIso8601String(),
       };
@@ -96,39 +95,42 @@ class ChatMessage {
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final sType = json['sender_type']?.toString() ?? json['sender_role']?.toString() ?? 'cashier';
+    final isOwner = sType == 'owner';
+    final msgText = json['message_text']?.toString() ?? json['text']?.toString() ?? '';
+    final attach = json['attachment_url']?.toString() ?? json['image_url']?.toString();
+    final isAudio = attach != null && attach.startsWith('data:audio');
+    final isImage = attach != null && !isAudio;
+
     return ChatMessage(
-      id: json['id']?.toString() ?? 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      id: json['id']?.toString() ?? '',
       pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
       branchId: json['branch_id']?.toString(),
       deviceId: json['device_id']?.toString(),
-      senderName: json['sender_name'] ?? 'مستخدم',
-      senderRole: json['sender_role'] ?? 'cashier',
-      text: json['text'] ?? '',
-      audioBase64: json['audio_base64'],
-      imageBase64: json['image_base64'],
-      imageUrl: json['image_url'],
-      isRead: json['is_read'] == true || json['is_read'] == 1,
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
+      senderName: isOwner ? 'المدير العام' : (json['sender_name'] ?? 'الصيدلي / الكاشير'),
+      senderRole: sType,
+      text: msgText,
+      audioBase64: isAudio ? attach : json['audio_base64']?.toString(),
+      imageBase64: isImage ? attach : json['image_base64']?.toString(),
+      imageUrl: attach,
+      isRead: json['read_at'] != null || json['is_read'] == true || json['is_read'] == 1,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() : DateTime.now(),
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'pharmacy_id': pharmacyId,
-        'branch_id': branchId,
-        'device_id': deviceId,
-        'sender_name': senderName,
-        'sender_role': senderRole,
-        'text': text,
-        'audio_base64': audioBase64,
-        'image_base64': imageBase64,
-        'image_url': imageUrl,
-        'is_read': isRead,
+        'branch_id': branchId != null ? int.tryParse(branchId!) : null,
+        'sender_type': senderRole == 'owner' ? 'owner' : 'cashier',
+        'message_text': text,
+        'attachment_url': imageUrl ?? imageBase64 ?? audioBase64,
         'created_at': createdAt.toIso8601String(),
       };
 }
 
 class StreamFrame {
+  final String id;
   final String channel; // screen, camera
   final int pharmacyId;
   final String branchId;
@@ -138,6 +140,7 @@ class StreamFrame {
   final DateTime timestamp;
 
   StreamFrame({
+    this.id = '',
     required this.channel,
     required this.pharmacyId,
     required this.branchId,
@@ -148,26 +151,34 @@ class StreamFrame {
   });
 
   factory StreamFrame.fromJson(Map<String, dynamic> json) {
+    final rawFrame = json['frame_data']?.toString() ?? json['frame_base64']?.toString() ?? '';
+    final rawTime = json['created_at'] ?? json['timestamp'];
     return StreamFrame(
-      channel: json['channel'] ?? 'screen',
+      id: json['id']?.toString() ?? '',
+      channel: json['channel']?.toString() ?? json['stream_type']?.toString() ?? 'screen',
       pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
-      branchId: json['branch_id']?.toString() ?? 'main',
+      branchId: json['branch_id']?.toString() ?? '1',
       deviceId: json['device_id']?.toString() ?? 'dev-1',
-      frameBase64: json['frame_base64'] ?? '',
+      frameBase64: rawFrame,
       fps: json['fps'] is int ? json['fps'] : int.tryParse(json['fps']?.toString() ?? '15') ?? 15,
-      timestamp: json['timestamp'] != null ? DateTime.tryParse(json['timestamp']) ?? DateTime.now() : DateTime.now(),
+      timestamp: rawTime != null ? DateTime.tryParse(rawTime.toString()) ?? DateTime.now() : DateTime.now(),
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'channel': channel,
-        'pharmacy_id': pharmacyId,
-        'branch_id': branchId,
-        'device_id': deviceId,
-        'frame_base64': frameBase64,
-        'fps': fps,
-        'timestamp': timestamp.toIso8601String(),
-      };
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'pharmacy_id': pharmacyId,
+      'branch_id': int.tryParse(branchId) ?? 1,
+      'stream_type': channel,
+      'channel': channel,
+      'frame_data': frameBase64,
+      'created_at': timestamp.toIso8601String(),
+    };
+    if (id.isNotEmpty && id.contains('-') && id.length == 36) {
+      map['id'] = id;
+    }
+    return map;
+  }
 }
 
 class RemotePurchaseItemPayload {

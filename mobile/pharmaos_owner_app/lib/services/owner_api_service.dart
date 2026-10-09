@@ -1,6 +1,7 @@
 // خدمة الاتصال السحابي والأوامر الحية الشاملة لتطبيق المدير - PharmaOS Owner App
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -9,13 +10,35 @@ import '../models/models.dart';
 
 class OwnerApiService {
   static const String _prefPharmacyId = 'owner_pharmacy_id_v1';
+  static const String _prefBranchId = 'owner_branch_id_v1';
   static const String _prefPharmacyName = 'owner_pharmacy_name_v1';
   static const String _prefLicenseKey = 'owner_license_key_v1';
+  static const String _prefLicenseType = 'owner_license_type_v1';
   static const String _prefManagerName = 'owner_manager_name_v1';
   static const String _prefSupabaseUrl = 'owner_supabase_url_v1';
   static const String _prefSupabaseKey = 'owner_supabase_key_v1';
   static const String _prefBranchesList = 'owner_branches_list_v1';
   static const String _prefDeviceFingerprint = 'owner_device_fingerprint_v1';
+
+  /// توليد معرف UUID v4 قياسي وصحيح لمنع أخطاء 400 في Supabase
+  static String generateUuidV4() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant 10
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}';
+  }
+
+  /// تحويل معرف الفرع لرقم صحيح مناسب لحقل Supabase branch_id (integer)
+  static int resolveBranchId(dynamic branchId, int defaultBranchId) {
+    if (branchId is int) return branchId;
+    if (branchId != null) {
+      final parsed = int.tryParse(branchId.toString());
+      if (parsed != null) return parsed;
+    }
+    return defaultBranchId;
+  }
 
   /// فحص توفر اتصال حقيقي بالإنترنت قبل محاولة مسح الباركود أو الربط
   static Future<bool> hasInternetConnection() async {
@@ -56,8 +79,10 @@ class OwnerApiService {
   static Future<void> saveConfig(OwnerTenantConfig config) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefPharmacyId, config.pharmacyId);
+    await prefs.setInt(_prefBranchId, config.branchId);
     await prefs.setString(_prefPharmacyName, config.pharmacyName);
     await prefs.setString(_prefLicenseKey, config.licenseKey);
+    await prefs.setString(_prefLicenseType, config.licenseType);
     await prefs.setString(_prefManagerName, config.managerName);
     await prefs.setString(_prefSupabaseUrl, config.supabaseUrl);
     await prefs.setString(_prefSupabaseKey, config.supabaseKey);
@@ -71,8 +96,10 @@ class OwnerApiService {
 
     return OwnerTenantConfig(
       pharmacyId: pharmacyId,
+      branchId: prefs.getInt(_prefBranchId) ?? 1,
       pharmacyName: prefs.getString(_prefPharmacyName) ?? 'صيدليتي',
       licenseKey: prefs.getString(_prefLicenseKey) ?? '',
+      licenseType: prefs.getString(_prefLicenseType) ?? 'single',
       managerName: prefs.getString(_prefManagerName) ?? 'المدير العام',
       supabaseUrl: prefs.getString(_prefSupabaseUrl) ?? 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
       supabaseKey: prefs.getString(_prefSupabaseKey) ?? 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
@@ -128,12 +155,14 @@ class OwnerApiService {
       throw Exception('لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.');
     }
 
-    final defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
-    final defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
+    const defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
+    const defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
 
     int? parsedPharmacyId;
+    int? parsedBranchId;
     String? parsedPharmacyName;
     String? parsedLicenseKey;
+    String? parsedLicenseType;
     String supabaseUrl = defaultUrl;
     String supabaseKey = defaultKey;
 
@@ -142,8 +171,10 @@ class OwnerApiService {
       try {
         final jsonMap = jsonDecode(key) as Map<String, dynamic>;
         parsedPharmacyId = int.tryParse(jsonMap['pharmacy_id']?.toString() ?? '');
+        parsedBranchId = int.tryParse(jsonMap['branch_id']?.toString() ?? '');
         parsedPharmacyName = jsonMap['pharmacy_name']?.toString();
         parsedLicenseKey = jsonMap['license_key']?.toString();
+        parsedLicenseType = jsonMap['license_type']?.toString();
         if (jsonMap['supabase_url'] != null && jsonMap['supabase_url'].toString().isNotEmpty) {
           supabaseUrl = jsonMap['supabase_url'].toString();
         }
@@ -259,14 +290,40 @@ class OwnerApiService {
           debugPrint('Device registration notice: $e');
         }
 
+        // 3. جلب قائمة الفروع الحقيقية المسجلة لهذه الصيدلية
+        List<String> branchNames = ['الفرع الرئيسي'];
+        int resolvedBranchId = parsedBranchId ?? 1;
+        try {
+          final bRes = await http.get(
+            Uri.parse('$supabaseUrl/rest/v1/branches?pharmacy_id=eq.$pId&is_active=eq.true&select=id,name,branch_activation_key&order=id.asc'),
+            headers: _headers(supabaseKey),
+          ).timeout(const Duration(seconds: 6));
+          if (bRes.statusCode == 200) {
+            final bData = jsonDecode(bRes.body);
+            if (bData is List && bData.isNotEmpty) {
+              final realBranches = bData.where((b) {
+                final k = b['branch_activation_key']?.toString() ?? '';
+                return !k.startsWith('OWNER-');
+              }).toList();
+              if (realBranches.isNotEmpty) {
+                branchNames = realBranches.map((b) => b['name']?.toString() ?? 'فرع').toList();
+                final firstBId = realBranches.first['id'];
+                resolvedBranchId = (firstBId is int) ? firstBId : (int.tryParse(firstBId.toString()) ?? resolvedBranchId);
+              }
+            }
+          }
+        } catch (_) {}
+
         final config = OwnerTenantConfig(
           pharmacyId: pId,
+          branchId: resolvedBranchId,
           pharmacyName: pName,
           licenseKey: lic,
+          licenseType: parsedLicenseType ?? 'single',
           managerName: 'المدير العام',
           supabaseUrl: supabaseUrl,
           supabaseKey: supabaseKey,
-          branches: ['الفرع الرئيسي'],
+          branches: branchNames,
         );
 
         await saveConfig(config);
@@ -284,18 +341,19 @@ class OwnerApiService {
   }
 
   /// إرسال أمر عن بعد للنظام المكتبي
-  static Future<bool> sendRemoteCommand(String type, Map<String, dynamic> payload, {String? branchId}) async {
+  static Future<bool> sendRemoteCommand(String type, Map<String, dynamic> payload, {dynamic branchId}) async {
     final config = await getConfig();
     if (config == null) return false;
 
     try {
+      final targetBranchId = resolveBranchId(branchId, config.branchId);
+
       final body = {
-        'id': 'cmd-${DateTime.now().millisecondsSinceEpoch}',
+        'id': generateUuidV4(),
         'pharmacy_id': config.pharmacyId,
-        'branch_id': branchId ?? 'main',
-        'device_id': 'mobile-owner',
-        'type': type,
-        'payload': payload,
+        'branch_id': targetBranchId,
+        'command_type': type,
+        'command_payload': payload,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
       };
@@ -314,7 +372,7 @@ class OwnerApiService {
   }
 
   /// طلب نسخ احتياطي فوري ثلاثي عن بعد
-  static Future<bool> triggerRemoteBackup({String? branchId}) async {
+  static Future<bool> triggerRemoteBackup({dynamic branchId}) async {
     return sendRemoteCommand('backup', {
       'requested_by': 'المدير العام من تطبيق الهاتف',
       'requested_at': DateTime.now().toIso8601String(),
@@ -344,13 +402,17 @@ class OwnerApiService {
   }
 
   /// جلب أحدث إطار لبث الفيديو الحي (شاشة أو كاميرا)
-  static Future<StreamFrame?> fetchLiveStreamFrame(String channel, {String? branchId}) async {
+  static Future<StreamFrame?> fetchLiveStreamFrame(String channel, {dynamic branchId}) async {
     final config = await getConfig();
     if (config == null) return null;
 
     try {
       String query = '${config.supabaseUrl}/rest/v1/cloud_stream_frames?pharmacy_id=eq.${config.pharmacyId}&channel=eq.$channel';
-      query += '&order=timestamp.desc&limit=1';
+      if (branchId != null) {
+        final parsed = int.tryParse(branchId.toString());
+        if (parsed != null) query += '&branch_id=eq.$parsed';
+      }
+      query += '&order=created_at.desc&limit=1';
 
       final response = await http.get(Uri.parse(query), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 4));
 
@@ -365,7 +427,7 @@ class OwnerApiService {
   }
 
   /// إرسال أمر تشغيل/إيقاف البث الحي للشاشة أو الكاميرا
-  static Future<bool> sendStreamControl(String channel, bool start, {String? branchId}) async {
+  static Future<bool> sendStreamControl(String channel, bool start, {dynamic branchId}) async {
     final type = channel == 'screen'
         ? (start ? 'start_screen_stream' : 'stop_screen_stream')
         : (start ? 'start_camera_stream' : 'stop_camera_stream');
@@ -502,14 +564,14 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/remote_commands?pharmacy_id=eq.${config.pharmacyId}&type=eq.add_purchase_invoice&order=created_at.desc&limit=30';
+      final url = '${config.supabaseUrl}/rest/v1/remote_commands?pharmacy_id=eq.${config.pharmacyId}&command_type=eq.add_purchase_invoice&order=created_at.desc&limit=30';
       final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 8));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
         if (data is List) {
           return data.map((j) {
-            final payload = j['payload'];
+            final payload = j['command_payload'] ?? j['payload'];
             if (payload != null && payload is Map<String, dynamic>) {
               return RemotePurchaseInvoice.fromJson(payload);
             }
@@ -517,20 +579,25 @@ class OwnerApiService {
           }).whereType<RemotePurchaseInvoice>().toList();
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchPurchasesHistory error: $e');
+    }
 
     return [];
   }
 
   /// جلب سجل المحادثة مع الفروع
-  static Future<List<ChatMessage>> fetchChatMessages({String? branchId}) async {
+  static Future<List<ChatMessage>> fetchChatMessages({dynamic branchId}) async {
     final config = await getConfig();
     if (config == null) return [];
 
     try {
       String url = '${config.supabaseUrl}/rest/v1/owner_chat_messages?pharmacy_id=eq.${config.pharmacyId}';
       if (branchId != null) {
-        url += '&branch_id=eq.$branchId';
+        final parsed = int.tryParse(branchId.toString());
+        if (parsed != null) {
+          url += '&branch_id=eq.$parsed';
+        }
       }
       url += '&order=created_at.asc&limit=100';
 
@@ -552,22 +619,22 @@ class OwnerApiService {
     required String text,
     String? audioBase64,
     String? imageBase64,
-    String? branchId,
+    dynamic branchId,
   }) async {
     final config = await getConfig();
     if (config == null) return false;
 
     try {
+      final targetBranchId = resolveBranchId(branchId, config.branchId);
+
       final payload = {
-        'id': 'msg-${DateTime.now().millisecondsSinceEpoch}',
+        'id': generateUuidV4(),
         'pharmacy_id': config.pharmacyId,
-        'branch_id': branchId ?? 'main',
-        'device_id': 'mobile-owner',
-        'sender_name': config.managerName,
-        'sender_role': 'owner',
-        'text': text,
-        'audio_base64': audioBase64,
-        'image_base64': imageBase64,
+        'branch_id': targetBranchId,
+        'sender_type': 'owner',
+        'message_text': text,
+        if (imageBase64 != null || audioBase64 != null)
+          'attachment_url': (imageBase64 ?? audioBase64),
         'created_at': DateTime.now().toIso8601String(),
       };
 

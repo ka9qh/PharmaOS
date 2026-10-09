@@ -2,6 +2,7 @@
 // يعالج بث الفيديو الحي (شاشة + كاميرا)، فواتير الشراء، تعديل الأسعار، الدردشة، والنسخ الاحتياطي الفوري
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -35,6 +36,25 @@ class OwnerLiveSyncService {
 
   static final Set<String> _processedCommandIds = {};
   static final Set<String> _processedMessageIds = {};
+
+  /// توليد معرف متوافق مع معيار UUID v4 للأوامر والرسائل
+  static String _generateUuidV4() {
+    final random = math.Random();
+    String hex(int length) {
+      final buffer = StringBuffer();
+      for (int i = 0; i < length; i++) {
+        buffer.write(random.nextInt(16).toRadixString(16));
+      }
+      return buffer.toString();
+    }
+    final p1 = hex(8);
+    final p2 = hex(4);
+    final p3 = '4${hex(3)}';
+    final p4Variant = (8 + random.nextInt(4)).toRadixString(16);
+    final p4 = '$p4Variant${hex(3)}';
+    final p5 = hex(12);
+    return '$p1-$p2-$p3-$p4-$p5';
+  }
 
   /// تشغيل خدمة المزامنة الحية والاستماع لطلبات تطبيق المدير
   static void start() {
@@ -90,7 +110,7 @@ class OwnerLiveSyncService {
       }
 
       // 2. فحص الرسائل الواردة من المدير (Chat Messages)
-      final msgUrl = '$supabaseUrl/rest/v1/owner_chat_messages?pharmacy_id=eq.$pharmacyId&sender_role=eq.owner&is_read=eq.false&order=created_at.asc&limit=10';
+      final msgUrl = '$supabaseUrl/rest/v1/owner_chat_messages?pharmacy_id=eq.$pharmacyId&sender_type=eq.owner&read_at=is.null&order=created_at.asc&limit=10';
       final msgRes = await http.get(Uri.parse(msgUrl), headers: _headers(apiKey)).timeout(const Duration(seconds: 5));
 
       if (msgRes.statusCode >= 200 && msgRes.statusCode < 300) {
@@ -367,14 +387,15 @@ class OwnerLiveSyncService {
       resultMessage = 'خطأ أثناء التنفيذ: $e';
     }
 
+    final finalStatus = (status == 'completed' || status == 'executed') ? 'executed' : 'failed';
     // تحديث حالة الأمر على السيرفر
     try {
       await http.patch(
         Uri.parse('$supabaseUrl/rest/v1/remote_commands?id=eq.${cmd.id}'),
         headers: _headers(apiKey),
         body: jsonEncode({
-          'status': status,
-          'result_message': resultMessage,
+          'status': finalStatus,
+          'error_message': finalStatus == 'failed' ? resultMessage : null,
           'executed_at': DateTime.now().toIso8601String(),
         }),
       );
@@ -400,7 +421,7 @@ class OwnerLiveSyncService {
       await http.patch(
         Uri.parse('$supabaseUrl/rest/v1/owner_chat_messages?id=eq.$id'),
         headers: _headers(apiKey),
-        body: jsonEncode({'is_read': true}),
+        body: jsonEncode({'read_at': DateTime.now().toIso8601String()}),
       );
     } catch (_) {}
   }
@@ -419,12 +440,12 @@ class OwnerLiveSyncService {
       final pharmacyId = int.tryParse(tenantConfig.pharmacyId) ?? 1;
 
       final msg = ChatMessage(
-        id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
+        id: _generateUuidV4(),
         pharmacyId: pharmacyId,
         branchId: targetBranchId ?? tenantConfig.branchId,
         deviceId: 'server-1',
         senderName: 'الصيدلي / الكاشير',
-        senderRole: 'pharmacist',
+        senderRole: 'cashier',
         text: text,
         audioBase64: audioBase64,
         imageBase64: imageBase64,
@@ -542,6 +563,7 @@ class OwnerLiveSyncService {
 
       if (frameBase64.isNotEmpty) {
         final frame = StreamFrame(
+          id: _generateUuidV4(),
           channel: channel,
           pharmacyId: pharmacyId,
           branchId: tenantConfig.branchId,
@@ -578,7 +600,7 @@ class OwnerLiveSyncService {
 
       // 2. شبكة المراقبة وزوايا التركيز CCTV
       final gridPaint = Paint()
-        ..color = const Color(0xFF1E293B).withOpacity(0.8)
+        ..color = const Color(0xFF1E293B).withValues(alpha: 0.8)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke;
       for (double x = 40; x < 640; x += 80) {
@@ -590,7 +612,7 @@ class OwnerLiveSyncService {
 
       // 3. مستطيل التركيز الأوسط
       final focusPaint = Paint()
-        ..color = const Color(0xFF10B981).withOpacity(0.5)
+        ..color = const Color(0xFF10B981).withValues(alpha: 0.5)
         ..strokeWidth = 1.5
         ..style = PaintingStyle.stroke;
       canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(200, 80, 240, 180), const Radius.circular(12)), focusPaint);

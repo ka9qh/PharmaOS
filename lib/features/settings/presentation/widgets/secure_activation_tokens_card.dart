@@ -25,10 +25,10 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
 
   String _pharmacyName = 'صيدلية نموذجية';
   String _pharmacyId = '2';
+  String _branchId = '1';
+  String _licenseType = 'single';
   String _hardwareId = 'LOADING...';
   String _activationRequestCode = '';
-  List<BranchConfig> _branches = [];
-  List<DeviceConfig> _devices = [];
   String _licenseKey = 'PHARMAOS-COMMERCIAL-LIFETIME';
 
   // قائمة أجهزة هاتف المدير المتصلة
@@ -49,18 +49,16 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
       final hwId = await HardwareIdGenerator.getHardwareId();
       final pName = settings.pharmacyName.isNotEmpty ? settings.pharmacyName : 'صيدلية نموذجية';
       final reqCode = await DeviceBranchManagerService.generatePharmacyActivationRequestCode(pName, hwId);
-      final branchesList = await DeviceBranchManagerService.getBranches();
-      final devicesList = await DeviceBranchManagerService.getDevices();
       final tenantConfig = await LicenseService.getTenantConfig();
 
       if (mounted) {
         setState(() {
           _pharmacyName = pName;
           _pharmacyId = tenantConfig.pharmacyId.isNotEmpty ? tenantConfig.pharmacyId : '2';
+          _branchId = tenantConfig.branchId.isNotEmpty ? tenantConfig.branchId : '1';
+          _licenseType = tenantConfig.licenseType;
           _hardwareId = hwId;
           _activationRequestCode = reqCode;
-          _branches = branchesList;
-          _devices = devicesList;
           _licenseKey = tenantConfig.licenseKey.isNotEmpty ? tenantConfig.licenseKey : 'PHARMAOS-COMMERCIAL-LIFETIME';
           _isLoading = false;
         });
@@ -354,8 +352,10 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
     return jsonEncode({
       'app': 'pharmaos_owner',
       'pharmacy_id': int.tryParse(_pharmacyId) ?? 2,
+      'branch_id': int.tryParse(_branchId) ?? 1,
       'pharmacy_name': _pharmacyName,
       'license_key': _licenseKey,
+      'license_type': _licenseType,
       'supabase_url': CloudSyncService.defaultSupabaseUrl,
       'supabase_key': CloudSyncService.defaultSupabaseAnonKey,
     });
@@ -492,6 +492,13 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                 ),
             ],
           ),
+          if (_isLoading) ...[
+            const SizedBox(height: 8),
+            const ClipRRect(
+              borderRadius: BorderRadius.all(Radius.circular(2)),
+              child: LinearProgressIndicator(minHeight: 2, color: Color(0xFF10B981), backgroundColor: Colors.white10),
+            ),
+          ],
           const SizedBox(height: 14),
 
           if (!_isUnlocked) ...[
@@ -624,6 +631,16 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
             ),
             const SizedBox(height: 10),
             _buildRevealedCard(
+              title: 'نوع الترخيص وسماحية الفروع (License Type)',
+              subtitle: _licenseType == 'multi_branch'
+                  ? 'ترخيص يدعم إنشاء فروع إضافية متزامنة ورموز تفعيل لكل فرع'
+                  : 'ترخيص صيدلية فردية مقفل (لا يسمح بإنشاء أي فروع إضافية)',
+              value: _licenseType == 'multi_branch' ? 'صيدلية متعددة الفروع (Multi-Branch)' : 'صيدلية فردية (Single Pharmacy 🔒)',
+              icon: _licenseType == 'multi_branch' ? Icons.account_tree_rounded : Icons.store_mall_directory_rounded,
+              color: _licenseType == 'multi_branch' ? const Color(0xFF10B981) : Colors.amber,
+            ),
+            const SizedBox(height: 10),
+            _buildRevealedCard(
               title: 'معرف الجهاز الحصري (Hardware Fingerprint)',
               subtitle: 'المعرف المادي الحصري الخاص بهذا الجهاز لمنع الاستنساخ',
               value: _hardwareId,
@@ -638,6 +655,16 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               icon: Icons.verified_user_rounded,
               color: const Color(0xFF10B981),
             ),
+            if (_activationRequestCode.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildRevealedCard(
+                title: 'رمز طلب الترخيص والتفعيل (Activation Request Code)',
+                subtitle: 'الرمز الفني الخاص بهذا الجهاز لإصدار التراخيص',
+                value: _activationRequestCode,
+                icon: Icons.pin_rounded,
+                color: Colors.orangeAccent,
+              ),
+            ],
 
             const SizedBox(height: 16),
 
@@ -767,7 +794,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'النظام: $osInfo | الاقتران: ${createdAt.length >= 10 ? createdAt.substring(0, 10) : createdAt}',
+                  'النظام: $osInfo | الاقتران: ${createdAt.length >= 10 ? createdAt.substring(0, 10) : createdAt}${lastSync.isNotEmpty ? ' | مزامنة: ${lastSync.length >= 16 ? lastSync.substring(11, 16) : lastSync}' : ''}',
                   style: const TextStyle(color: Colors.grey, fontSize: 10),
                 ),
               ],

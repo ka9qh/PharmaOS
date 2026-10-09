@@ -72,34 +72,31 @@ class LicenseService {
       final key = await CloudSyncService.getSupabaseAnonKey();
       
       final res = await http.get(
-        Uri.parse('$url/rest/v1/pharmacies?license_key=eq.${config.licenseKey}&select=id,is_active,subscription_type,subscription_end,paused_by_admin'),
+        Uri.parse('$url/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(config.licenseKey)}&select=id,name,is_active&limit=1'),
         headers: {
           'apikey': key,
           'Authorization': 'Bearer $key',
         },
-      );
+      ).timeout(const Duration(seconds: 5));
       
       if (res.statusCode == 200) {
         final data = json.decode(res.body) as List;
         if (data.isNotEmpty) {
           final p = data.first;
           final String pId = p['id'].toString();
-          final bool paused = p['paused_by_admin'] == true || p['is_active'] == false;
-          final subType = p['subscription_type'];
-          final subEndStr = p['subscription_end'];
+          final bool isActive = p['is_active'] != false;
           
           final updated = config.copyWith(
             pharmacyId: pId,
-            pausedByAdmin: paused,
-            subscriptionType: subType,
-            subscriptionEnd: subEndStr != null ? DateTime.parse(subEndStr) : null,
+            pharmacyName: p['name'] ?? config.pharmacyName,
+            pausedByAdmin: !isActive,
           );
           
           await saveTenantConfig(updated);
         }
       }
     } catch (_) {
-      // تجاهل أخطاء الشبكة
+      // تجاهل أخطاء الشبكة المؤقتة
     }
   }
 
@@ -121,82 +118,90 @@ class LicenseService {
     required String licenseKey,
     String? branchActivationKey,
   }) async {
-    if (licenseKey.trim().isEmpty) return false;
+    final cleanKey = licenseKey.trim().toUpperCase();
+    if (cleanKey.isEmpty) return false;
 
     try {
       final url = await CloudSyncService.getSupabaseUrl();
       final key = await CloudSyncService.getSupabaseAnonKey();
       
-      // 1. التحقق من الصيدلية
+      // 1. استنتاج نوع الترخيص من كود التفعيل
+      String lType = 'single';
+      if (cleanKey.contains('MULTI') || cleanKey.contains('BRANCH')) {
+        lType = 'multi_branch';
+      } else if (cleanKey.contains('SINGLE')) {
+        lType = 'single';
+      }
+
+      // 2. التحقق من الصيدلية في Supabase
       final res = await http.get(
-        Uri.parse('$url/rest/v1/pharmacies?license_key=eq.${licenseKey.trim()}&select=id,name,is_active,license_type,subscription_type,subscription_end,paused_by_admin'),
+        Uri.parse('$url/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(licenseKey.trim())}&select=id,name,is_active&limit=1'),
         headers: {
           'apikey': key,
           'Authorization': 'Bearer $key',
         },
-      );
+      ).timeout(const Duration(seconds: 10));
       
       if (res.statusCode != 200) return false;
       final data = json.decode(res.body) as List;
-      if (data.isEmpty) return false; // الترخيص غير موجود
+      if (data.isEmpty) return false; // الترخيص غير مسجل في السيرفر
       
       final p = data.first;
-      if (p['is_active'] == false || p['paused_by_admin'] == true) return false; // الحساب موقوف
+      if (p['is_active'] == false) return false; // الحساب موقوف
       
       final String pId = p['id'].toString();
-      final String pName = p['name'];
-      final String lType = p['license_type'] ?? 'single';
-      final String sType = p['subscription_type'] ?? 'lifetime';
-      final String? sEndStr = p['subscription_end'];
+      final String pName = p['name'] ?? 'صيدليتي';
       
-      // 2. التحقق من الفرع إذا كان ترخيص متعدد الفروع
+      // 3. التحقق من كود الفرع إذا تم إدخال رمز تفعيل فرع
       String? bId;
       String? bName;
       
-      if (lType == 'multi_branch') {
-        if (branchActivationKey == null || branchActivationKey.isEmpty) return false; // مطلوب رمز فرع
-        
+      if (branchActivationKey != null && branchActivationKey.trim().isNotEmpty) {
+        final bKey = branchActivationKey.trim();
         final bRes = await http.get(
-          Uri.parse('$url/rest/v1/branches?branch_activation_key=eq.${branchActivationKey.trim()}&pharmacy_id=eq.$pId&select=id,name,is_active'),
+          Uri.parse('$url/rest/v1/branches?branch_activation_key=eq.${Uri.encodeComponent(bKey)}&pharmacy_id=eq.$pId&select=id,name,is_active&limit=1'),
           headers: {
             'apikey': key,
             'Authorization': 'Bearer $key',
           },
-        );
+        ).timeout(const Duration(seconds: 8));
         
-        if (bRes.statusCode != 200) return false;
-        final bData = json.decode(bRes.body) as List;
-        if (bData.isEmpty || bData.first['is_active'] == false) return false; // فرع غير موجود أو موقوف
-        
-        bId = bData.first['id'].toString();
-        bName = bData.first['name'];
+        if (bRes.statusCode == 200) {
+          final bData = json.decode(bRes.body) as List;
+          if (bData.isNotEmpty && bData.first['is_active'] != false) {
+            bId = bData.first['id'].toString();
+            bName = bData.first['name'];
+          }
+        }
       }
 
-      // 3. تحديث البصمة للجهاز في Supabase (تسجيل الجهاز)
+      // 4. تحديث بصمة الجهاز في Supabase
       final deviceId = _generateDeviceId();
-      if (lType == 'single') {
-        await http.patch(
-          Uri.parse('$url/rest/v1/pharmacies?id=eq.$pId'),
-          headers: {
-            'apikey': key,
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/json',
-          },
-          body: json.encode({'device_fingerprint': deviceId}),
-        );
-      } else if (bId != null) {
-        await http.patch(
-          Uri.parse('$url/rest/v1/branches?id=eq.$bId'),
-          headers: {
-            'apikey': key,
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/json',
-          },
-          body: json.encode({'branch_device_fingerprint': deviceId}),
-        );
-      }
+      try {
+        if (bId != null) {
+          await http.patch(
+            Uri.parse('$url/rest/v1/branches?id=eq.$bId'),
+            headers: {
+              'apikey': key,
+              'Authorization': 'Bearer $key',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({'branch_device_fingerprint': deviceId}),
+          ).timeout(const Duration(seconds: 5));
+        } else {
+          await http.patch(
+            Uri.parse('$url/rest/v1/branches?pharmacy_id=eq.$pId&is_active=eq.true&limit=1'),
+            headers: {
+              'apikey': key,
+              'Authorization': 'Bearer $key',
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({'device_fingerprint': deviceId}),
+          ).timeout(const Duration(seconds: 5));
+        }
+      } catch (_) {}
 
-      // 4. حفظ محلياً
+      // 5. الحفظ محلياً
       final current = await getTenantConfig();
       final updated = current.copyWith(
         pharmacyId: pId,
@@ -207,8 +212,7 @@ class LicenseService {
         isActivated: true,
         deviceId: deviceId,
         licenseType: lType,
-        subscriptionType: sType,
-        subscriptionEnd: sEndStr != null ? DateTime.parse(sEndStr) : null,
+        subscriptionType: 'lifetime',
         pausedByAdmin: false,
       );
 

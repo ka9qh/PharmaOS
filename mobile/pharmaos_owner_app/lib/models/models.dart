@@ -1,10 +1,11 @@
 // نماذج بيانات تطبيق المدير المحمول المحدثة الشاملة - PharmaOS Owner App
-import 'dart:convert';
 
 class OwnerTenantConfig {
   final int pharmacyId;
+  final int branchId;
   final String pharmacyName;
   final String licenseKey;
+  final String licenseType;
   final String managerName;
   final String supabaseUrl;
   final String supabaseKey;
@@ -12,8 +13,10 @@ class OwnerTenantConfig {
 
   OwnerTenantConfig({
     required this.pharmacyId,
+    this.branchId = 1,
     required this.pharmacyName,
     required this.licenseKey,
+    this.licenseType = 'single',
     required this.managerName,
     this.supabaseUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
     this.supabaseKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
@@ -219,6 +222,7 @@ class CloudBackupRecord {
 }
 
 class StreamFrame {
+  final String id;
   final String channel; // screen, camera
   final int pharmacyId;
   final String branchId;
@@ -228,6 +232,7 @@ class StreamFrame {
   final DateTime timestamp;
 
   StreamFrame({
+    this.id = '',
     required this.channel,
     required this.pharmacyId,
     required this.branchId,
@@ -238,14 +243,17 @@ class StreamFrame {
   });
 
   factory StreamFrame.fromJson(Map<String, dynamic> json) {
+    final rawFrame = json['frame_data']?.toString() ?? json['frame_base64']?.toString() ?? '';
+    final rawTime = json['created_at'] ?? json['timestamp'];
     return StreamFrame(
-      channel: json['channel'] ?? 'screen',
+      id: json['id']?.toString() ?? '',
+      channel: json['channel']?.toString() ?? json['stream_type']?.toString() ?? 'screen',
       pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
-      branchId: json['branch_id']?.toString() ?? 'main',
-      deviceId: json['device_id']?.toString() ?? 'dev-1',
-      frameBase64: json['frame_base64'] ?? '',
+      branchId: json['branch_id']?.toString() ?? '1',
+      deviceId: json['device_id']?.toString() ?? 'POS-01',
+      frameBase64: rawFrame,
       fps: json['fps'] is int ? json['fps'] : int.tryParse(json['fps']?.toString() ?? '15') ?? 15,
-      timestamp: json['timestamp'] != null ? DateTime.tryParse(json['timestamp']) ?? DateTime.now() : DateTime.now(),
+      timestamp: rawTime != null ? DateTime.tryParse(rawTime.toString()) ?? DateTime.now() : DateTime.now(),
     );
   }
 }
@@ -371,6 +379,7 @@ class ChatMessage {
   final String? deviceId;
   final String senderName;
   final String senderRole; // owner, cashier, pharmacist
+  final String senderType; // owner, cashier
   final String text;
   final String? audioBase64;
   final String? imageBase64;
@@ -385,6 +394,7 @@ class ChatMessage {
     this.deviceId,
     required this.senderName,
     required this.senderRole,
+    this.senderType = 'cashier',
     required this.text,
     this.audioBase64,
     this.imageBase64,
@@ -394,18 +404,26 @@ class ChatMessage {
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final sType = json['sender_type']?.toString() ?? json['sender_role']?.toString() ?? 'cashier';
+    final isOwner = sType == 'owner';
+    final msgText = json['message_text']?.toString() ?? json['text']?.toString() ?? '';
+    final attach = json['attachment_url']?.toString() ?? json['image_url']?.toString();
+    final isAudio = attach != null && attach.startsWith('data:audio');
+    final isImage = attach != null && !isAudio;
+
     return ChatMessage(
-      id: json['id']?.toString() ?? 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      id: json['id']?.toString() ?? '',
       pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
       branchId: json['branch_id']?.toString(),
       deviceId: json['device_id']?.toString(),
-      senderName: json['sender_name'] ?? 'مستخدم',
-      senderRole: json['sender_role'] ?? 'cashier',
-      text: json['text'] ?? '',
-      audioBase64: json['audio_base64'],
-      imageBase64: json['image_base64'],
-      imageUrl: json['image_url'],
-      isRead: json['is_read'] == true || json['is_read'] == 1,
+      senderName: isOwner ? 'المدير العام' : (json['sender_name'] ?? 'كاشير الصيدلية'),
+      senderRole: sType,
+      senderType: sType,
+      text: msgText,
+      audioBase64: isAudio ? attach : json['audio_base64']?.toString(),
+      imageBase64: isImage ? attach : json['image_base64']?.toString(),
+      imageUrl: attach,
+      isRead: json['read_at'] != null || json['is_read'] == true || json['is_read'] == 1,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
     );
   }
@@ -413,15 +431,10 @@ class ChatMessage {
   Map<String, dynamic> toJson() => {
         'id': id,
         'pharmacy_id': pharmacyId,
-        'branch_id': branchId,
-        'device_id': deviceId,
-        'sender_name': senderName,
-        'sender_role': senderRole,
-        'text': text,
-        'audio_base64': audioBase64,
-        'image_base64': imageBase64,
-        'image_url': imageUrl,
-        'is_read': isRead,
+        'branch_id': branchId != null ? int.tryParse(branchId!) : null,
+        'sender_type': senderType,
+        'message_text': text,
+        'attachment_url': imageUrl ?? imageBase64 ?? audioBase64,
         'created_at': createdAt.toIso8601String(),
       };
 }
