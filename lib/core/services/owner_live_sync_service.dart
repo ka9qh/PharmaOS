@@ -395,7 +395,7 @@ class OwnerLiveSyncService {
         headers: _headers(apiKey),
         body: jsonEncode({
           'status': finalStatus,
-          'error_message': finalStatus == 'failed' ? resultMessage : null,
+          'error_message': resultMessage,
           'executed_at': DateTime.now().toIso8601String(),
         }),
       );

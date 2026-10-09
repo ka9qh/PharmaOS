@@ -34,7 +34,7 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
     try {
       final tenant = await LicenseService.getTenantConfig();
       final pId = int.tryParse(tenant.pharmacyId) ?? 2;
-      final bId = int.tryParse(tenant.branchId) ?? 1;
+      final bId = int.tryParse(tenant.branchId) ?? 2;
 
       List<TeleConsultation> consultations = [];
       try {

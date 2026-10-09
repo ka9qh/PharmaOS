@@ -26,7 +26,7 @@ class TenantConfig {
     this.pharmacyId = '2',
     this.pharmacyName = 'صيدلية نموذجية',
     this.licenseKey = 'PHARMAOS-COMMERCIAL-LIFETIME',
-    this.branchId = '1',
+    this.branchId = '2',
     this.branchName = 'الفرع الرئيسي',
     this.deviceId = 'POS-01',
     this.isCloudSyncEnabled = true,

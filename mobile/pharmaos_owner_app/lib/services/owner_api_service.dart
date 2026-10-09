@@ -96,7 +96,7 @@ class OwnerApiService {
 
     return OwnerTenantConfig(
       pharmacyId: pharmacyId,
-      branchId: prefs.getInt(_prefBranchId) ?? 1,
+      branchId: prefs.getInt(_prefBranchId) ?? 2,
       pharmacyName: prefs.getString(_prefPharmacyName) ?? 'صيدليتي',
       licenseKey: prefs.getString(_prefLicenseKey) ?? '',
       licenseType: prefs.getString(_prefLicenseType) ?? 'single',
@@ -351,7 +351,7 @@ class OwnerApiService {
       final body = {
         'id': generateUuidV4(),
         'pharmacy_id': config.pharmacyId,
-        'branch_id': targetBranchId,
+        'branch_id': null, // Owner commands apply to the whole pharmacy, avoids FK issues
         'command_type': type,
         'command_payload': payload,
         'status': 'pending',
@@ -630,7 +630,7 @@ class OwnerApiService {
       final payload = {
         'id': generateUuidV4(),
         'pharmacy_id': config.pharmacyId,
-        'branch_id': targetBranchId,
+        'branch_id': null, // Owner messages are pharmacy-wide
         'sender_type': 'owner',
         'message_text': text,
         if (imageBase64 != null || audioBase64 != null)

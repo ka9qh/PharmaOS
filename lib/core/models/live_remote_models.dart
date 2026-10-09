@@ -156,8 +156,8 @@ class StreamFrame {
     return StreamFrame(
       id: json['id']?.toString() ?? '',
       channel: json['channel']?.toString() ?? json['stream_type']?.toString() ?? 'screen',
-      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '1') ?? 1,
-      branchId: json['branch_id']?.toString() ?? '1',
+      pharmacyId: json['pharmacy_id'] is int ? json['pharmacy_id'] : int.tryParse(json['pharmacy_id']?.toString() ?? '2') ?? 2,
+      branchId: json['branch_id']?.toString() ?? '2',
       deviceId: json['device_id']?.toString() ?? 'dev-1',
       frameBase64: rawFrame,
       fps: json['fps'] is int ? json['fps'] : int.tryParse(json['fps']?.toString() ?? '15') ?? 15,
@@ -168,7 +168,7 @@ class StreamFrame {
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
       'pharmacy_id': pharmacyId,
-      'branch_id': int.tryParse(branchId) ?? 1,
+      'branch_id': int.tryParse(branchId) ?? 2,
       'stream_type': channel,
       'channel': channel,
       'frame_data': frameBase64,

@@ -13,7 +13,7 @@ class OwnerTenantConfig {
 
   OwnerTenantConfig({
     required this.pharmacyId,
-    this.branchId = 1,
+    this.branchId = 2,
     required this.pharmacyName,
     required this.licenseKey,
     this.licenseType = 'single',

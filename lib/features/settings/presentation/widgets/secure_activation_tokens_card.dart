@@ -25,7 +25,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
 
   String _pharmacyName = 'صيدلية نموذجية';
   String _pharmacyId = '2';
-  String _branchId = '1';
+  String _branchId = '2';
   String _licenseType = 'single';
   String _hardwareId = 'LOADING...';
   String _activationRequestCode = '';
@@ -55,7 +55,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
         setState(() {
           _pharmacyName = pName;
           _pharmacyId = tenantConfig.pharmacyId.isNotEmpty ? tenantConfig.pharmacyId : '2';
-          _branchId = tenantConfig.branchId.isNotEmpty ? tenantConfig.branchId : '1';
+          _branchId = tenantConfig.branchId.isNotEmpty ? tenantConfig.branchId : '2';
           _licenseType = tenantConfig.licenseType;
           _hardwareId = hwId;
           _activationRequestCode = reqCode;

@@ -140,8 +140,8 @@ class CloudSyncService {
         final salesPayload = recentSales.map((s) {
           final net = s.totalAmount - s.discount;
           return {
-            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 1,
-            'branch_id': int.tryParse(tenantConfig.branchId) ?? 1,
+            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 2,
+            'branch_id': int.tryParse(tenantConfig.branchId) ?? 2,
             'local_sale_id': s.id,
             'invoice_number': s.invoiceNumber,
             'total_amount': s.totalAmount,
@@ -179,8 +179,8 @@ class CloudSyncService {
       if (closings.isNotEmpty) {
         final closingsPayload = closings.map((c) {
           return {
-            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 1,
-            'branch_id': int.tryParse(tenantConfig.branchId) ?? 1,
+            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 2,
+            'branch_id': int.tryParse(tenantConfig.branchId) ?? 2,
             'date': c.date.toIso8601String().substring(0, 10),
             'period_start': c.periodStart.toIso8601String(),
             'total_sales': c.totalSales,
@@ -217,7 +217,7 @@ class CloudSyncService {
       if (activeMedicines.isNotEmpty) {
         final medsPayload = activeMedicines.map((m) {
           return {
-            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 1,
+            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 2,
             'local_id': m.id,
             'name_ar': m.nameAr,
             'name_en': m.nameEn,
