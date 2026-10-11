@@ -44,20 +44,25 @@ class OwnerApiService {
   static Future<bool> hasInternetConnection() async {
     try {
       final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none) && connectivityResult.length == 1) {
+      if (connectivityResult.contains(ConnectivityResult.none) &&
+          connectivityResult.length == 1) {
         return false;
       }
       final response = await http.get(
-        Uri.parse('https://bwgilcmzffcwdcxhfyfk.supabase.co/rest/v1/pharmacies?select=id&limit=1'),
+        Uri.parse(
+            'https://bwgilcmzffcwdcxhfyfk.supabase.co/rest/v1/pharmacies?select=id&limit=1'),
         headers: {
           'apikey': 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
-          'Authorization': 'Bearer sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+          'Authorization':
+              'Bearer sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
         },
       ).timeout(const Duration(seconds: 4));
       return response.statusCode >= 200 && response.statusCode < 500;
     } catch (_) {
       try {
-        final res = await http.get(Uri.parse('https://www.google.com')).timeout(const Duration(seconds: 3));
+        final res = await http
+            .get(Uri.parse('https://www.google.com'))
+            .timeout(const Duration(seconds: 3));
         return res.statusCode == 200;
       } catch (_) {
         return false;
@@ -69,7 +74,8 @@ class OwnerApiService {
     final prefs = await SharedPreferences.getInstance();
     String? fp = prefs.getString(_prefDeviceFingerprint);
     if (fp == null || fp.isEmpty) {
-      final os = Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Mobile');
+      final os =
+          Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Mobile');
       fp = 'PHONE-$os-${DateTime.now().millisecondsSinceEpoch}';
       await prefs.setString(_prefDeviceFingerprint, fp);
     }
@@ -101,8 +107,10 @@ class OwnerApiService {
       licenseKey: prefs.getString(_prefLicenseKey) ?? '',
       licenseType: prefs.getString(_prefLicenseType) ?? 'single',
       managerName: prefs.getString(_prefManagerName) ?? 'المدير العام',
-      supabaseUrl: prefs.getString(_prefSupabaseUrl) ?? 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
-      supabaseKey: prefs.getString(_prefSupabaseKey) ?? 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+      supabaseUrl: prefs.getString(_prefSupabaseUrl) ??
+          'https://bwgilcmzffcwdcxhfyfk.supabase.co',
+      supabaseKey: prefs.getString(_prefSupabaseKey) ??
+          'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
       branches: prefs.getStringList(_prefBranchesList) ?? ['الفرع الرئيسي'],
     );
   }
@@ -126,10 +134,13 @@ class OwnerApiService {
       if (config == null) return true;
       final fp = await getOrCreateDeviceFingerprint();
 
-      final res = await http.get(
-        Uri.parse('${config.supabaseUrl}/rest/v1/branches?device_fingerprint=eq.$fp&pharmacy_id=eq.${config.pharmacyId}&select=id,is_active'),
-        headers: _headers(config.supabaseKey),
-      ).timeout(const Duration(seconds: 5));
+      final res = await http
+          .get(
+            Uri.parse(
+                '${config.supabaseUrl}/rest/v1/branches?device_fingerprint=eq.$fp&pharmacy_id=eq.${config.pharmacyId}&select=id,is_active'),
+            headers: _headers(config.supabaseKey),
+          )
+          .timeout(const Duration(seconds: 5));
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final list = jsonDecode(res.body);
@@ -152,7 +163,8 @@ class OwnerApiService {
     // 0. التحقق من توفر الإنترنت الحقيقي أولاً
     final isOnline = await hasInternetConnection();
     if (!isOnline) {
-      throw Exception('لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.');
+      throw Exception(
+          'لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.');
     }
 
     const defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
@@ -170,15 +182,18 @@ class OwnerApiService {
     if (key.startsWith('{') && key.endsWith('}')) {
       try {
         final jsonMap = jsonDecode(key) as Map<String, dynamic>;
-        parsedPharmacyId = int.tryParse(jsonMap['pharmacy_id']?.toString() ?? '');
+        parsedPharmacyId =
+            int.tryParse(jsonMap['pharmacy_id']?.toString() ?? '');
         parsedBranchId = int.tryParse(jsonMap['branch_id']?.toString() ?? '');
         parsedPharmacyName = jsonMap['pharmacy_name']?.toString();
         parsedLicenseKey = jsonMap['license_key']?.toString();
         parsedLicenseType = jsonMap['license_type']?.toString();
-        if (jsonMap['supabase_url'] != null && jsonMap['supabase_url'].toString().isNotEmpty) {
+        if (jsonMap['supabase_url'] != null &&
+            jsonMap['supabase_url'].toString().isNotEmpty) {
           supabaseUrl = jsonMap['supabase_url'].toString();
         }
-        if (jsonMap['supabase_key'] != null && jsonMap['supabase_key'].toString().isNotEmpty) {
+        if (jsonMap['supabase_key'] != null &&
+            jsonMap['supabase_key'].toString().isNotEmpty) {
           supabaseKey = jsonMap['supabase_key'].toString();
         }
       } catch (_) {}
@@ -200,10 +215,13 @@ class OwnerApiService {
 
       // البحث في Supabase بالمعرف أو بمفتاح الترخيص باستخدام الأعمدة الأساسية المضمونة
       if (parsedPharmacyId != null) {
-        final res = await http.get(
-          Uri.parse('$supabaseUrl/rest/v1/pharmacies?id=eq.$parsedPharmacyId&select=id,name,license_key,is_active&limit=1'),
-          headers: _headers(supabaseKey),
-        ).timeout(const Duration(seconds: 10));
+        final res = await http
+            .get(
+              Uri.parse(
+                  '$supabaseUrl/rest/v1/pharmacies?id=eq.$parsedPharmacyId&select=id,name,license_key,is_active&limit=1'),
+              headers: _headers(supabaseKey),
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final data = jsonDecode(res.body);
@@ -213,11 +231,16 @@ class OwnerApiService {
         }
       }
 
-      if (pharmacyData == null && parsedLicenseKey != null && parsedLicenseKey.isNotEmpty) {
-        final res = await http.get(
-          Uri.parse('$supabaseUrl/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(parsedLicenseKey)}&select=id,name,license_key,is_active&limit=1'),
-          headers: _headers(supabaseKey),
-        ).timeout(const Duration(seconds: 10));
+      if (pharmacyData == null &&
+          parsedLicenseKey != null &&
+          parsedLicenseKey.isNotEmpty) {
+        final res = await http
+            .get(
+              Uri.parse(
+                  '$supabaseUrl/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(parsedLicenseKey)}&select=id,name,license_key,is_active&limit=1'),
+              headers: _headers(supabaseKey),
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final data = jsonDecode(res.body);
@@ -229,10 +252,13 @@ class OwnerApiService {
 
       // Fallback ذكي للصيدلية الأساسية
       if (pharmacyData == null) {
-        final res = await http.get(
-          Uri.parse('$supabaseUrl/rest/v1/pharmacies?select=id,name,license_key,is_active&limit=1'),
-          headers: _headers(supabaseKey),
-        ).timeout(const Duration(seconds: 10));
+        final res = await http
+            .get(
+              Uri.parse(
+                  '$supabaseUrl/rest/v1/pharmacies?select=id,name,license_key,is_active&limit=1'),
+              headers: _headers(supabaseKey),
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final data = jsonDecode(res.body);
@@ -245,40 +271,51 @@ class OwnerApiService {
       if (pharmacyData != null) {
         final p = pharmacyData;
         if (p['is_active'] == false) {
-          throw Exception('هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
+          throw Exception(
+              'هذا الحساب موقوف من قبل الإدارة، يرجى مراجعة الدعم الفني');
         }
 
-        final pId = p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 2;
+        final pId =
+            p['id'] is int ? p['id'] : int.tryParse(p['id'].toString()) ?? 2;
         final pName = p['name'] ?? parsedPharmacyName ?? 'صيدلية نموذجية';
-        final lic = p['license_key'] ?? parsedLicenseKey ?? 'PHARMAOS-COMMERCIAL-LIFETIME';
+        final lic = p['license_key'] ??
+            parsedLicenseKey ??
+            'PHARMAOS-COMMERCIAL-LIFETIME';
 
         // 2. تسجيل الجهاز في جدول branches لتمكين التحكم به وإيقافه من سطح المكتب
         final deviceFp = await getOrCreateDeviceFingerprint();
-        final osName = Platform.isAndroid ? 'أندرويد' : (Platform.isIOS ? 'آيفون' : 'جوال');
+        final osName = Platform.isAndroid
+            ? 'أندرويد'
+            : (Platform.isIOS ? 'آيفون' : 'جوال');
         final deviceName = 'هاتف المدير ($osName)';
 
         try {
           // فحص هل مسجل مسبقاً
-          final checkDevice = await http.get(
-            Uri.parse('$supabaseUrl/rest/v1/branches?device_fingerprint=eq.$deviceFp&pharmacy_id=eq.$pId'),
-            headers: _headers(supabaseKey),
-          ).timeout(const Duration(seconds: 5));
+          final checkDevice = await http
+              .get(
+                Uri.parse(
+                    '$supabaseUrl/rest/v1/branches?device_fingerprint=eq.$deviceFp&pharmacy_id=eq.$pId'),
+                headers: _headers(supabaseKey),
+              )
+              .timeout(const Duration(seconds: 5));
 
           if (checkDevice.statusCode == 200) {
             final devList = jsonDecode(checkDevice.body);
             if (devList is List && devList.isEmpty) {
               // إضافة الجهاز كفرع/جهاز جديد
-              await http.post(
-                Uri.parse('$supabaseUrl/rest/v1/branches'),
-                headers: _headers(supabaseKey),
-                body: jsonEncode({
-                  'pharmacy_id': pId,
-                  'name': deviceName,
-                  'branch_activation_key': 'OWNER-$deviceFp',
-                  'device_fingerprint': deviceFp,
-                  'is_active': true,
-                }),
-              ).timeout(const Duration(seconds: 8));
+              await http
+                  .post(
+                    Uri.parse('$supabaseUrl/rest/v1/branches'),
+                    headers: _headers(supabaseKey),
+                    body: jsonEncode({
+                      'pharmacy_id': pId,
+                      'name': deviceName,
+                      'branch_activation_key': 'OWNER-$deviceFp',
+                      'device_fingerprint': deviceFp,
+                      'is_active': true,
+                    }),
+                  )
+                  .timeout(const Duration(seconds: 8));
             } else if (devList is List && devList.isNotEmpty) {
               final devRow = devList.first;
               if (devRow['is_active'] == false) {
@@ -294,10 +331,13 @@ class OwnerApiService {
         List<String> branchNames = ['الفرع الرئيسي'];
         int resolvedBranchId = parsedBranchId ?? 1;
         try {
-          final bRes = await http.get(
-            Uri.parse('$supabaseUrl/rest/v1/branches?pharmacy_id=eq.$pId&is_active=eq.true&select=id,name,branch_activation_key&order=id.asc'),
-            headers: _headers(supabaseKey),
-          ).timeout(const Duration(seconds: 6));
+          final bRes = await http
+              .get(
+                Uri.parse(
+                    '$supabaseUrl/rest/v1/branches?pharmacy_id=eq.$pId&is_active=eq.true&select=id,name,branch_activation_key&order=id.asc'),
+                headers: _headers(supabaseKey),
+              )
+              .timeout(const Duration(seconds: 6));
           if (bRes.statusCode == 200) {
             final bData = jsonDecode(bRes.body);
             if (bData is List && bData.isNotEmpty) {
@@ -306,9 +346,13 @@ class OwnerApiService {
                 return !k.startsWith('OWNER-');
               }).toList();
               if (realBranches.isNotEmpty) {
-                branchNames = realBranches.map((b) => b['name']?.toString() ?? 'فرع').toList();
+                branchNames = realBranches
+                    .map((b) => b['name']?.toString() ?? 'فرع')
+                    .toList();
                 final firstBId = realBranches.first['id'];
-                resolvedBranchId = (firstBId is int) ? firstBId : (int.tryParse(firstBId.toString()) ?? resolvedBranchId);
+                resolvedBranchId = (firstBId is int)
+                    ? firstBId
+                    : (int.tryParse(firstBId.toString()) ?? resolvedBranchId);
               }
             }
           }
@@ -329,19 +373,25 @@ class OwnerApiService {
         await saveConfig(config);
         return config;
       } else {
-        throw Exception('باركود الاتصال غير صالح أو لم يتم العثور على الصيدلية بالسيرفر.');
+        throw Exception(
+            'باركود الاتصال غير صالح أو لم يتم العثور على الصيدلية بالسيرفر.');
       }
     } catch (e) {
-      if (e is Exception && !e.toString().contains('SocketException') && !e.toString().contains('TimeoutException')) {
+      if (e is Exception &&
+          !e.toString().contains('SocketException') &&
+          !e.toString().contains('TimeoutException')) {
         rethrow;
       }
       debugPrint('loginWithActivationKey network error: $e');
-      throw Exception('تعذر الاتصال بالخادم السحابي. يرجى التحقق من اتصال الإنترنت بالجهاز.');
+      throw Exception(
+          'تعذر الاتصال بالخادم السحابي. يرجى التحقق من اتصال الإنترنت بالجهاز.');
     }
   }
 
   /// إرسال أمر عن بعد للنظام المكتبي
-  static Future<bool> sendRemoteCommand(String type, Map<String, dynamic> payload, {dynamic branchId}) async {
+  static Future<bool> sendRemoteCommand(
+      String type, Map<String, dynamic> payload,
+      {dynamic branchId}) async {
     final config = await getConfig();
     if (config == null) return false;
 
@@ -351,20 +401,28 @@ class OwnerApiService {
       final body = {
         'id': generateUuidV4(),
         'pharmacy_id': config.pharmacyId,
-        'branch_id': null, // Owner commands apply to the whole pharmacy, avoids FK issues
+        // Every command is scoped to the selected branch.  Sending a null
+        // target made it impossible for a desktop device to safely decide
+        // whether it was the intended recipient.
+        'branch_id': targetBranchId,
         'command_type': type,
         'command_payload': payload,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      final response = await http.post(
-        Uri.parse('${config.supabaseUrl}/rest/v1/remote_commands'),
-        headers: _headers(config.supabaseKey),
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('${config.supabaseUrl}/rest/v1/remote_commands'),
+            headers: _headers(config.supabaseKey),
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
 
-      return response.statusCode >= 200 && response.statusCode < 300;
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+      debugPrint(
+          'sendRemoteCommand failed (${response.statusCode}): ${response.body}');
+      return false;
     } catch (e) {
       debugPrint('sendRemoteCommand error: $e');
       return false;
@@ -373,10 +431,13 @@ class OwnerApiService {
 
   /// طلب نسخ احتياطي فوري ثلاثي عن بعد
   static Future<bool> triggerRemoteBackup({dynamic branchId}) async {
-    return sendRemoteCommand('backup', {
-      'requested_by': 'المدير العام من تطبيق الهاتف',
-      'requested_at': DateTime.now().toIso8601String(),
-    }, branchId: branchId);
+    return sendRemoteCommand(
+        'backup',
+        {
+          'requested_by': 'المدير العام من تطبيق الهاتف',
+          'requested_at': DateTime.now().toIso8601String(),
+        },
+        branchId: branchId);
   }
 
   /// جلب سجل النسخ الاحتياطية
@@ -385,8 +446,11 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/cloud_backups?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=30';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 10));
+      final url =
+          '${config.supabaseUrl}/rest/v1/cloud_backups?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=30';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -402,19 +466,23 @@ class OwnerApiService {
   }
 
   /// جلب أحدث إطار لبث الفيديو الحي (شاشة أو كاميرا)
-  static Future<StreamFrame?> fetchLiveStreamFrame(String channel, {dynamic branchId}) async {
+  static Future<StreamFrame?> fetchLiveStreamFrame(String channel,
+      {dynamic branchId}) async {
     final config = await getConfig();
     if (config == null) return null;
 
     try {
-      String query = '${config.supabaseUrl}/rest/v1/cloud_stream_frames?pharmacy_id=eq.${config.pharmacyId}&channel=eq.$channel';
+      String query =
+          '${config.supabaseUrl}/rest/v1/cloud_stream_frames?pharmacy_id=eq.${config.pharmacyId}&channel=eq.$channel';
       if (branchId != null) {
         final parsed = int.tryParse(branchId.toString());
         if (parsed != null) query += '&branch_id=eq.$parsed';
       }
       query += '&order=created_at.desc&limit=1';
 
-      final response = await http.get(Uri.parse(query), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 4));
+      final response = await http
+          .get(Uri.parse(query), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 4));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -427,21 +495,27 @@ class OwnerApiService {
   }
 
   /// إرسال أمر تشغيل/إيقاف البث الحي للشاشة أو الكاميرا
-  static Future<bool> sendStreamControl(String channel, bool start, {dynamic branchId}) async {
+  static Future<bool> sendStreamControl(String channel, bool start,
+      {dynamic branchId}) async {
     final type = channel == 'screen'
         ? (start ? 'start_screen_stream' : 'stop_screen_stream')
         : (start ? 'start_camera_stream' : 'stop_camera_stream');
-    return sendRemoteCommand(type, {'channel': channel, 'enabled': start}, branchId: branchId);
+    return sendRemoteCommand(type, {'channel': channel, 'enabled': start},
+        branchId: branchId);
   }
 
   /// جلب كامل جدول المخزون والأدوية الحقيقية
-  static Future<List<CloudMedicine>> fetchMedicinesCatalog({int limit = 200}) async {
+  static Future<List<CloudMedicine>> fetchMedicinesCatalog(
+      {int limit = 200}) async {
     final config = await getConfig();
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/cloud_medicines?pharmacy_id=eq.${config.pharmacyId}&order=name_ar.asc&limit=$limit';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 10));
+      final url =
+          '${config.supabaseUrl}/rest/v1/cloud_medicines?pharmacy_id=eq.${config.pharmacyId}&order=name_ar.asc&limit=$limit';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -461,7 +535,12 @@ class OwnerApiService {
     final all = await fetchMedicinesCatalog();
     if (query.trim().isEmpty) return all;
     final q = query.trim().toLowerCase();
-    return all.where((m) => m.nameAr.toLowerCase().contains(q) || (m.nameEn != null && m.nameEn!.toLowerCase().contains(q)) || (m.barcode != null && m.barcode!.contains(q))).toList();
+    return all
+        .where((m) =>
+            m.nameAr.toLowerCase().contains(q) ||
+            (m.nameEn != null && m.nameEn!.toLowerCase().contains(q)) ||
+            (m.barcode != null && m.barcode!.contains(q)))
+        .toList();
   }
 
   /// تعديل سعر دواء فورياً عن بعد
@@ -476,12 +555,15 @@ class OwnerApiService {
     if (config == null) return false;
 
     // 1. إرسال أمر فوري للنظام المكتبي
-    await sendRemoteCommand('price_update', {
-      'medicine_id': medicineId,
-      'medicine_name': medicineName,
-      'new_selling_price': newSellingPrice,
-      if (newPurchasePrice != null) 'new_purchase_price': newPurchasePrice,
-    }, branchId: branchId);
+    await sendRemoteCommand(
+        'price_update',
+        {
+          'medicine_id': medicineId,
+          'medicine_name': medicineName,
+          'new_selling_price': newSellingPrice,
+          if (newPurchasePrice != null) 'new_purchase_price': newPurchasePrice,
+        },
+        branchId: branchId);
 
     // 2. تحديث السجل السحابي
     try {
@@ -490,11 +572,14 @@ class OwnerApiService {
         if (newPurchasePrice != null) 'purchase_price': newPurchasePrice,
       };
 
-      await http.patch(
-        Uri.parse('${config.supabaseUrl}/rest/v1/cloud_medicines?id=eq.$medicineId'),
-        headers: _headers(config.supabaseKey),
-        body: jsonEncode(patchPayload),
-      ).timeout(const Duration(seconds: 8));
+      await http
+          .patch(
+            Uri.parse(
+                '${config.supabaseUrl}/rest/v1/cloud_medicines?id=eq.$medicineId'),
+            headers: _headers(config.supabaseKey),
+            body: jsonEncode(patchPayload),
+          )
+          .timeout(const Duration(seconds: 8));
     } catch (_) {}
 
     return true;
@@ -510,14 +595,17 @@ class OwnerApiService {
     int reorderLevel = 5,
     String? branchId,
   }) async {
-    return sendRemoteCommand('add_medicine', {
-      'name_ar': nameAr,
-      'name_en': nameEn,
-      'barcode': barcode,
-      'selling_price': sellingPrice,
-      'purchase_price': purchasePrice,
-      'reorder_level': reorderLevel,
-    }, branchId: branchId);
+    return sendRemoteCommand(
+        'add_medicine',
+        {
+          'name_ar': nameAr,
+          'name_en': nameEn,
+          'barcode': barcode,
+          'selling_price': sellingPrice,
+          'purchase_price': purchasePrice,
+          'reorder_level': reorderLevel,
+        },
+        branchId: branchId);
   }
 
   /// جلب قائمة الموردين
@@ -526,8 +614,11 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/cloud_suppliers?pharmacy_id=eq.${config.pharmacyId}&order=name.asc';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 8));
+      final url =
+          '${config.supabaseUrl}/rest/v1/cloud_suppliers?pharmacy_id=eq.${config.pharmacyId}&order=name.asc';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -546,16 +637,21 @@ class OwnerApiService {
     String? notes,
     String? branchId,
   }) async {
-    return sendRemoteCommand('add_supplier', {
-      'name': name,
-      'contact_info': contactInfo,
-      'notes': notes,
-    }, branchId: branchId);
+    return sendRemoteCommand(
+        'add_supplier',
+        {
+          'name': name,
+          'contact_info': contactInfo,
+          'notes': notes,
+        },
+        branchId: branchId);
   }
 
   /// إدخال فاتورة شراء جديدة مطابقة للنظام المكتبي
-  static Future<bool> createPurchaseInvoice(RemotePurchaseInvoice invoice, {String? branchId}) async {
-    return sendRemoteCommand('add_purchase_invoice', invoice.toJson(), branchId: branchId);
+  static Future<bool> createPurchaseInvoice(RemotePurchaseInvoice invoice,
+      {String? branchId}) async {
+    return sendRemoteCommand('add_purchase_invoice', invoice.toJson(),
+        branchId: branchId);
   }
 
   /// جلب فواتير الشراء السابقة
@@ -564,19 +660,25 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/remote_commands?pharmacy_id=eq.${config.pharmacyId}&command_type=eq.add_purchase_invoice&order=created_at.desc&limit=30';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 8));
+      final url =
+          '${config.supabaseUrl}/rest/v1/remote_commands?pharmacy_id=eq.${config.pharmacyId}&type=eq.add_purchase_invoice&order=created_at.desc&limit=30';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
         if (data is List) {
-          return data.map((j) {
-            final payload = j['command_payload'] ?? j['payload'];
-            if (payload != null && payload is Map<String, dynamic>) {
-              return RemotePurchaseInvoice.fromJson(payload);
-            }
-            return null;
-          }).whereType<RemotePurchaseInvoice>().toList();
+          return data
+              .map((j) {
+                final payload = j['payload'] ?? j['command_payload'];
+                if (payload != null && payload is Map<String, dynamic>) {
+                  return RemotePurchaseInvoice.fromJson(payload);
+                }
+                return null;
+              })
+              .whereType<RemotePurchaseInvoice>()
+              .toList();
         }
       }
     } catch (e) {
@@ -592,7 +694,8 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      String url = '${config.supabaseUrl}/rest/v1/owner_chat_messages?pharmacy_id=eq.${config.pharmacyId}';
+      String url =
+          '${config.supabaseUrl}/rest/v1/owner_chat_messages?pharmacy_id=eq.${config.pharmacyId}';
       if (branchId != null) {
         final parsed = int.tryParse(branchId.toString());
         if (parsed != null) {
@@ -601,7 +704,9 @@ class OwnerApiService {
       }
       url += '&order=created_at.asc&limit=100';
 
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 8));
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -630,7 +735,7 @@ class OwnerApiService {
       final payload = {
         'id': generateUuidV4(),
         'pharmacy_id': config.pharmacyId,
-        'branch_id': null, // Owner messages are pharmacy-wide
+        'branch_id': targetBranchId,
         'sender_type': 'owner',
         'message_text': text,
         if (imageBase64 != null || audioBase64 != null)
@@ -638,13 +743,18 @@ class OwnerApiService {
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      final response = await http.post(
-        Uri.parse('${config.supabaseUrl}/rest/v1/owner_chat_messages'),
-        headers: _headers(config.supabaseKey),
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .post(
+            Uri.parse('${config.supabaseUrl}/rest/v1/owner_chat_messages'),
+            headers: _headers(config.supabaseKey),
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 8));
 
-      return response.statusCode >= 200 && response.statusCode < 300;
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+      debugPrint(
+          'sendChatMessage failed (${response.statusCode}): ${response.body}');
+      return false;
     } catch (e) {
       debugPrint('sendChatMessage error: $e');
       return false;
@@ -657,8 +767,11 @@ class OwnerApiService {
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/cloud_sales?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=$limit';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 10));
+      final url =
+          '${config.supabaseUrl}/rest/v1/cloud_sales?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=$limit';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -671,13 +784,17 @@ class OwnerApiService {
   }
 
   /// جلب إغلاقات الصناديق اليومية Z-Reports
-  static Future<List<CloudDayClosing>> fetchDayClosings({int limit = 30}) async {
+  static Future<List<CloudDayClosing>> fetchDayClosings(
+      {int limit = 30}) async {
     final config = await getConfig();
     if (config == null) return [];
 
     try {
-      final url = '${config.supabaseUrl}/rest/v1/cloud_day_closings?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=$limit';
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 10));
+      final url =
+          '${config.supabaseUrl}/rest/v1/cloud_day_closings?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=$limit';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -690,18 +807,22 @@ class OwnerApiService {
   }
 
   /// جلب استشارات الروشتات الفورية
-  static Future<List<OwnerTeleConsultation>> fetchTeleConsultations({String? status}) async {
+  static Future<List<OwnerTeleConsultation>> fetchTeleConsultations(
+      {String? status}) async {
     final config = await getConfig();
     if (config == null) return [];
 
     try {
-      var url = '${config.supabaseUrl}/rest/v1/cloud_tele_consultations?pharmacy_id=eq.${config.pharmacyId}';
+      var url =
+          '${config.supabaseUrl}/rest/v1/cloud_tele_consultations?pharmacy_id=eq.${config.pharmacyId}';
       if (status != null && status.isNotEmpty) {
         url += '&status=eq.$status';
       }
       url += '&order=created_at.desc&limit=50';
 
-      final response = await http.get(Uri.parse(url), headers: _headers(config.supabaseKey)).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -733,11 +854,14 @@ class OwnerApiService {
         'answered_at': DateTime.now().toIso8601String(),
       };
 
-      final response = await http.patch(
-        Uri.parse('${config.supabaseUrl}/rest/v1/cloud_tele_consultations?id=eq.$consultationId'),
-        headers: _headers(config.supabaseKey),
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .patch(
+            Uri.parse(
+                '${config.supabaseUrl}/rest/v1/cloud_tele_consultations?id=eq.$consultationId'),
+            headers: _headers(config.supabaseKey),
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 10));
 
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (_) {

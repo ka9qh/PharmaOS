@@ -4,6 +4,12 @@
 build/
 *.iml
 .idea/
+node_modules/
+.env
+.env.*
+!.env.example
+supabase/.env
+supabase/functions/.env
 
 # ملفات مولدة تلقائيًا
 *.g.dart
@@ -30,3 +36,8 @@ build/
 # حزم التطبيقات التنفيذية الكبيرة
 *.apk
 /releases/*.apk
+
+# ملفات الاختبار المؤقتة
+scratch/
+mobile/pharmaos_owner_app/bin/
+*.ps1

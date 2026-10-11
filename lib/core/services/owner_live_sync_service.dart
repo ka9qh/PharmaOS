@@ -30,9 +30,12 @@ class OwnerLiveSyncService {
   static bool isScreenStreamingActive = false;
   static bool isCameraStreamingActive = false;
 
-  static final ValueNotifier<bool> isConnectedNotifier = ValueNotifier<bool>(false);
-  static final ValueNotifier<List<ChatMessage>> chatMessagesNotifier = ValueNotifier<List<ChatMessage>>([]);
-  static final ValueNotifier<List<OwnerAuditAction>> auditLogsNotifier = ValueNotifier<List<OwnerAuditAction>>([]);
+  static final ValueNotifier<bool> isConnectedNotifier =
+      ValueNotifier<bool>(false);
+  static final ValueNotifier<List<ChatMessage>> chatMessagesNotifier =
+      ValueNotifier<List<ChatMessage>>([]);
+  static final ValueNotifier<List<OwnerAuditAction>> auditLogsNotifier =
+      ValueNotifier<List<OwnerAuditAction>>([]);
 
   static final Set<String> _processedCommandIds = {};
   static final Set<String> _processedMessageIds = {};
@@ -47,6 +50,7 @@ class OwnerLiveSyncService {
       }
       return buffer.toString();
     }
+
     final p1 = hex(8);
     final p2 = hex(4);
     final p3 = '4${hex(3)}';
@@ -89,11 +93,24 @@ class OwnerLiveSyncService {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
       final apiKey = await CloudSyncService.getSupabaseAnonKey();
-      final pharmacyId = int.tryParse(tenantConfig.pharmacyId) ?? 1;
+      final pharmacyId = int.tryParse(tenantConfig.pharmacyId);
+      final branchId = int.tryParse(tenantConfig.branchId);
+      if (pharmacyId == null ||
+          pharmacyId <= 0 ||
+          branchId == null ||
+          branchId <= 0) {
+        isConnectedNotifier.value = false;
+        debugPrint(
+            'Owner sync is disabled: missing verified pharmacy/branch identity.');
+        return;
+      }
 
       // 1. فحص الأوامر المعلقة (Remote Commands)
-      final cmdUrl = '$supabaseUrl/rest/v1/remote_commands?pharmacy_id=eq.$pharmacyId&status=eq.pending&order=created_at.asc&limit=10';
-      final cmdRes = await http.get(Uri.parse(cmdUrl), headers: _headers(apiKey)).timeout(const Duration(seconds: 5));
+      final cmdUrl =
+          '$supabaseUrl/rest/v1/remote_commands?pharmacy_id=eq.$pharmacyId&branch_id=eq.$branchId&status=eq.pending&order=created_at.asc&limit=10';
+      final cmdRes = await http
+          .get(Uri.parse(cmdUrl), headers: _headers(apiKey))
+          .timeout(const Duration(seconds: 5));
 
       if (cmdRes.statusCode >= 200 && cmdRes.statusCode < 300) {
         isConnectedNotifier.value = true;
@@ -110,8 +127,11 @@ class OwnerLiveSyncService {
       }
 
       // 2. فحص الرسائل الواردة من المدير (Chat Messages)
-      final msgUrl = '$supabaseUrl/rest/v1/owner_chat_messages?pharmacy_id=eq.$pharmacyId&sender_type=eq.owner&read_at=is.null&order=created_at.asc&limit=10';
-      final msgRes = await http.get(Uri.parse(msgUrl), headers: _headers(apiKey)).timeout(const Duration(seconds: 5));
+      final msgUrl =
+          '$supabaseUrl/rest/v1/owner_chat_messages?pharmacy_id=eq.$pharmacyId&branch_id=eq.$branchId&sender_type=eq.owner&read_at=is.null&order=created_at.asc&limit=10';
+      final msgRes = await http
+          .get(Uri.parse(msgUrl), headers: _headers(apiKey))
+          .timeout(const Duration(seconds: 5));
 
       if (msgRes.statusCode >= 200 && msgRes.statusCode < 300) {
         final data = jsonDecode(msgRes.body);
@@ -127,13 +147,16 @@ class OwnerLiveSyncService {
           }
         }
       }
-    } catch (_) {
+    } catch (e) {
+      isConnectedNotifier.value = false;
+      debugPrint('Owner sync poll failed: $e');
       // النظام أوفلاين مؤقتاً
     }
   }
 
   /// تنفيذ أمر وارد من تطبيق المدير
-  static Future<void> _executeCommand(RemoteCommand cmd, String supabaseUrl, String apiKey) async {
+  static Future<void> _executeCommand(
+      RemoteCommand cmd, String supabaseUrl, String apiKey) async {
     final db = sl<AppDatabase>();
     String status = 'completed';
     String resultMessage = 'تم التنفيذ بنجاح';
@@ -141,57 +164,72 @@ class OwnerLiveSyncService {
     try {
       switch (cmd.type) {
         case 'backup':
-          final backupResult = await MultiDestinationBackupService.performFullBackup(
+          final backupResult =
+              await MultiDestinationBackupService.performFullBackup(
             triggerReason: 'بأمر فوري من المدير عبر تطبيق الهاتف',
           );
-          
+
           String reportSummary = '';
           try {
             final reportsRepo = sl<ReportsRepository>();
             final summary = await reportsRepo.previewCurrentPeriod();
-            reportSummary = 'مبيعات الفترة: ${summary.totalSales} ر.ي | صافي الأرباح: ${summary.netProfit} ر.ي';
+            reportSummary =
+                'مبيعات الفترة: ${summary.totalSales} ر.ي | صافي الأرباح: ${summary.netProfit} ر.ي';
           } catch (_) {}
 
-          resultMessage = 'تم إنشاء وتأمين النسخة الاحتياطية بنجاح. $reportSummary (${backupResult.message ?? 'مكتمل'})';
-          
+          resultMessage =
+              'تم إنشاء وتأمين النسخة الاحتياطية بنجاح. $reportSummary (${backupResult.message ?? 'مكتمل'})';
+
           OwnerFloatingNotification.show(
             title: 'نسخ احتياطي فوري 🛡️',
-            message: 'تم تنفيذ أمر النسخ الاحتياطي الصادر من المدير بنجاح وحفظه في الخزائن الثلاث.',
+            message:
+                'تم تنفيذ أمر النسخ الاحتياطي الصادر من المدير بنجاح وحفظه في الخزائن الثلاث.',
             icon: Icons.cloud_done_rounded,
             color: const Color(0xFF10B981),
           );
           break;
 
         case 'price_update':
-          final medId = int.tryParse(cmd.payload['medicine_id']?.toString() ?? '');
+          final medId =
+              int.tryParse(cmd.payload['medicine_id']?.toString() ?? '');
           final medName = cmd.payload['medicine_name']?.toString() ?? 'دواء';
-          final newSelling = double.tryParse(cmd.payload['new_selling_price']?.toString() ?? '');
-          final newPurchase = double.tryParse(cmd.payload['new_purchase_price']?.toString() ?? '');
+          final newSelling = double.tryParse(
+              cmd.payload['new_selling_price']?.toString() ?? '');
+          final newPurchase = double.tryParse(
+              cmd.payload['new_purchase_price']?.toString() ?? '');
 
           if (medId != null && newSelling != null) {
-            final med = await (db.select(db.medicines)..where((m) => m.id.equals(medId))).getSingleOrNull();
+            final med = await (db.select(db.medicines)
+                  ..where((m) => m.id.equals(medId)))
+                .getSingleOrNull();
             if (med != null) {
-              await (db.update(db.medicines)..where((m) => m.id.equals(medId))).write(
+              await (db.update(db.medicines)..where((m) => m.id.equals(medId)))
+                  .write(
                 MedicinesCompanion(
                   sellingPrice: drift.Value(newSelling),
-                  purchasePrice: newPurchase != null ? drift.Value(newPurchase) : const drift.Value.absent(),
+                  purchasePrice: newPurchase != null
+                      ? drift.Value(newPurchase)
+                      : const drift.Value.absent(),
                 ),
               );
 
               // تحديث أسعار الدفعات النشطة
               if (newPurchase != null) {
-                await (db.update(db.batches)..where((b) => b.medicineId.equals(medId))).write(
+                await (db.update(db.batches)
+                      ..where((b) => b.medicineId.equals(medId)))
+                    .write(
                   BatchesCompanion(purchasePrice: drift.Value(newPurchase)),
                 );
               }
 
               resultMessage = 'تم تعديل سعر $medName بنجاح إلى $newSelling ر.ي';
-              
+
               _logAudit(
                 pharmacyId: cmd.pharmacyId,
                 actionType: 'price_changed',
                 title: 'تعديل سعر دواء',
-                description: 'تم تعديل سعر $medName إلى $newSelling ر.ي من قبل المدير',
+                description:
+                    'تم تعديل سعر $medName إلى $newSelling ر.ي من قبل المدير',
               );
 
               OwnerFloatingNotification.show(
@@ -208,22 +246,29 @@ class OwnerLiveSyncService {
           final nameAr = cmd.payload['name_ar']?.toString() ?? '';
           final nameEn = cmd.payload['name_en']?.toString();
           final barcode = cmd.payload['barcode']?.toString();
-          final sellPrice = double.tryParse(cmd.payload['selling_price']?.toString() ?? '0') ?? 0.0;
-          final purPrice = double.tryParse(cmd.payload['purchase_price']?.toString() ?? '0') ?? 0.0;
-          final reorder = int.tryParse(cmd.payload['reorder_level']?.toString() ?? '5') ?? 5;
+          final sellPrice = double.tryParse(
+                  cmd.payload['selling_price']?.toString() ?? '0') ??
+              0.0;
+          final purPrice = double.tryParse(
+                  cmd.payload['purchase_price']?.toString() ?? '0') ??
+              0.0;
+          final reorder =
+              int.tryParse(cmd.payload['reorder_level']?.toString() ?? '5') ??
+                  5;
 
           if (nameAr.isNotEmpty) {
             final newId = await db.into(db.medicines).insert(
-              MedicinesCompanion.insert(
-                nameAr: nameAr,
-                nameEn: drift.Value(nameEn),
-                barcode: barcode ?? '',
-                sku: barcode ?? 'SKU-${DateTime.now().millisecondsSinceEpoch}',
-                sellingPrice: sellPrice,
-                purchasePrice: purPrice,
-                reorderLevel: drift.Value(reorder),
-              ),
-            );
+                  MedicinesCompanion.insert(
+                    nameAr: nameAr,
+                    nameEn: drift.Value(nameEn),
+                    barcode: barcode ?? '',
+                    sku: barcode ??
+                        'SKU-${DateTime.now().millisecondsSinceEpoch}',
+                    sellingPrice: sellPrice,
+                    purchasePrice: purPrice,
+                    reorderLevel: drift.Value(reorder),
+                  ),
+                );
 
             resultMessage = 'تمت إضافة الدواء $nameAr بنجاح برقم #$newId';
 
@@ -250,12 +295,12 @@ class OwnerLiveSyncService {
 
           if (name.isNotEmpty) {
             final newSupId = await db.into(db.suppliers).insert(
-              SuppliersCompanion.insert(
-                name: name,
-                contactInfo: drift.Value(contact),
-                notes: drift.Value(notes),
-              ),
-            );
+                  SuppliersCompanion.insert(
+                    name: name,
+                    contactInfo: drift.Value(contact),
+                    notes: drift.Value(notes),
+                  ),
+                );
 
             resultMessage = 'تمت إضافة المورد $name بنجاح برقم #$newSupId';
 
@@ -276,32 +321,36 @@ class OwnerLiveSyncService {
           break;
 
         case 'add_purchase_invoice':
-          final invoicePayload = RemotePurchaseInvoicePayload.fromJson(cmd.payload);
-          
+          final invoicePayload =
+              RemotePurchaseInvoicePayload.fromJson(cmd.payload);
+
           // التأكد من وجود المورد أو إنشائه
           int supplierId = invoicePayload.supplierId ?? 1;
-          final existingSup = await (db.select(db.suppliers)..where((s) => s.id.equals(supplierId))).getSingleOrNull();
+          final existingSup = await (db.select(db.suppliers)
+                ..where((s) => s.id.equals(supplierId)))
+              .getSingleOrNull();
           if (existingSup == null && invoicePayload.supplierName.isNotEmpty) {
             supplierId = await db.into(db.suppliers).insert(
-              SuppliersCompanion.insert(
-                name: invoicePayload.supplierName,
-                contactInfo: const drift.Value('أدخل من تطبيق المدير'),
-              ),
-            );
+                  SuppliersCompanion.insert(
+                    name: invoicePayload.supplierName,
+                    contactInfo: const drift.Value('أدخل من تطبيق المدير'),
+                  ),
+                );
           }
 
           // إدراج فاتورة الشراء
           final purchaseId = await db.into(db.purchases).insert(
-            PurchasesCompanion.insert(
-              purchaseNumber: invoicePayload.invoiceNumber,
-              supplierInvoiceRef: drift.Value(invoicePayload.invoiceNumber),
-              supplierId: supplierId,
-              totalAmount: invoicePayload.totalAmount,
-              paidAmount: drift.Value(invoicePayload.paidAmount),
-              paymentMethod: drift.Value(invoicePayload.paymentType == 'credit' ? 'آجل' : 'نقدي'),
-              createdAt: drift.Value(invoicePayload.invoiceDate),
-            ),
-          );
+                PurchasesCompanion.insert(
+                  purchaseNumber: invoicePayload.invoiceNumber,
+                  supplierInvoiceRef: drift.Value(invoicePayload.invoiceNumber),
+                  supplierId: supplierId,
+                  totalAmount: invoicePayload.totalAmount,
+                  paidAmount: drift.Value(invoicePayload.paidAmount),
+                  paymentMethod: drift.Value(
+                      invoicePayload.paymentType == 'credit' ? 'آجل' : 'نقدي'),
+                  createdAt: drift.Value(invoicePayload.invoiceDate),
+                ),
+              );
 
           // إدراج بنود الفاتورة ودفعات المخزون
           for (final item in invoicePayload.items) {
@@ -309,54 +358,59 @@ class OwnerLiveSyncService {
             if (medicineId == 0) {
               // إنشاء الصنف إن لم يكن موجوداً
               medicineId = await db.into(db.medicines).insert(
-                MedicinesCompanion.insert(
-                  nameAr: item.medicineName,
-                  barcode: item.barcode ?? '',
-                  sku: item.barcode ?? 'SKU-${DateTime.now().millisecondsSinceEpoch}',
-                  sellingPrice: item.sellingPrice,
-                  purchasePrice: item.purchasePrice,
-                ),
-              );
+                    MedicinesCompanion.insert(
+                      nameAr: item.medicineName,
+                      barcode: item.barcode ?? '',
+                      sku: item.barcode ??
+                          'SKU-${DateTime.now().millisecondsSinceEpoch}',
+                      sellingPrice: item.sellingPrice,
+                      purchasePrice: item.purchasePrice,
+                    ),
+                  );
             }
 
             // إنشاء الدفعة في المخزون
             final batchId = await db.into(db.batches).insert(
-              BatchesCompanion.insert(
-                medicineId: medicineId,
-                batchNumber: drift.Value(item.batchNumber),
-                expiryDate: drift.Value(item.expiryDate),
-                quantity: item.quantity,
-                purchasePrice: item.purchasePrice,
-                receivedAt: drift.Value(invoicePayload.invoiceDate),
-              ),
-            );
+                  BatchesCompanion.insert(
+                    medicineId: medicineId,
+                    batchNumber: drift.Value(item.batchNumber),
+                    expiryDate: drift.Value(item.expiryDate),
+                    quantity: item.quantity,
+                    purchasePrice: item.purchasePrice,
+                    receivedAt: drift.Value(invoicePayload.invoiceDate),
+                  ),
+                );
 
             // إدراج بند الشراء
             await db.into(db.purchaseItems).insert(
-              PurchaseItemsCompanion.insert(
-                purchaseId: purchaseId,
-                medicineId: medicineId,
-                batchId: batchId,
-                quantity: item.quantity,
-                unitCost: item.purchasePrice,
-                subtotal: item.purchasePrice * item.quantity,
-                total: drift.Value((item.purchasePrice * item.quantity) - item.discount),
-              ),
-            );
+                  PurchaseItemsCompanion.insert(
+                    purchaseId: purchaseId,
+                    medicineId: medicineId,
+                    batchId: batchId,
+                    quantity: item.quantity,
+                    unitCost: item.purchasePrice,
+                    subtotal: item.purchasePrice * item.quantity,
+                    total: drift.Value(
+                        (item.purchasePrice * item.quantity) - item.discount),
+                  ),
+                );
           }
 
-          resultMessage = 'تم تسجيل فاتورة الشراء رقم ${invoicePayload.invoiceNumber} بنجاح برقم داخلي #$purchaseId';
+          resultMessage =
+              'تم تسجيل فاتورة الشراء رقم ${invoicePayload.invoiceNumber} بنجاح برقم داخلي #$purchaseId';
 
           _logAudit(
             pharmacyId: cmd.pharmacyId,
             actionType: 'purchase_recorded',
             title: 'فاتورة شراء عن بعد',
-            description: 'أدخل المدير فاتورة شراء ${invoicePayload.invoiceNumber} بقيمة ${invoicePayload.totalAmount} ر.ي من ${invoicePayload.supplierName}',
+            description:
+                'أدخل المدير فاتورة شراء ${invoicePayload.invoiceNumber} بقيمة ${invoicePayload.totalAmount} ر.ي من ${invoicePayload.supplierName}',
           );
 
           OwnerFloatingNotification.show(
             title: 'فاتورة شراء جديدة 📦',
-            message: 'أدخل المدير فاتورة شراء رقم [${invoicePayload.invoiceNumber}] بقيمة ${invoicePayload.totalAmount.toStringAsFixed(0)} ر.ي من المورد [${invoicePayload.supplierName}].',
+            message:
+                'أدخل المدير فاتورة شراء رقم [${invoicePayload.invoiceNumber}] بقيمة ${invoicePayload.totalAmount.toStringAsFixed(0)} ر.ي من المورد [${invoicePayload.supplierName}].',
             icon: Icons.receipt_long_rounded,
             color: const Color(0xFFEAB308),
           );
@@ -387,7 +441,8 @@ class OwnerLiveSyncService {
       resultMessage = 'خطأ أثناء التنفيذ: $e';
     }
 
-    final finalStatus = (status == 'completed' || status == 'executed') ? 'executed' : 'failed';
+    final finalStatus =
+        (status == 'completed' || status == 'executed') ? 'executed' : 'failed';
     // تحديث حالة الأمر على السيرفر
     try {
       await http.patch(
@@ -399,7 +454,9 @@ class OwnerLiveSyncService {
           'executed_at': DateTime.now().toIso8601String(),
         }),
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Unable to acknowledge remote command ${cmd.id}: $e');
+    }
   }
 
   /// معالجة الرسائل الواردة من المدير
@@ -410,13 +467,16 @@ class OwnerLiveSyncService {
 
     OwnerFloatingNotification.show(
       title: 'رسالة من المدير العام 💬',
-      message: msg.text.isNotEmpty ? msg.text : (msg.audioBase64 != null ? '🎙️ رسالة صوتية' : '📷 صورة مرفقة'),
+      message: msg.text.isNotEmpty
+          ? msg.text
+          : (msg.audioBase64 != null ? '🎙️ رسالة صوتية' : '📷 صورة مرفقة'),
       icon: Icons.chat_bubble_rounded,
       color: const Color(0xFF0D9488),
     );
   }
 
-  static Future<void> _markMessageRead(String id, String supabaseUrl, String apiKey) async {
+  static Future<void> _markMessageRead(
+      String id, String supabaseUrl, String apiKey) async {
     try {
       await http.patch(
         Uri.parse('$supabaseUrl/rest/v1/owner_chat_messages?id=eq.$id'),
@@ -437,12 +497,21 @@ class OwnerLiveSyncService {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
       final apiKey = await CloudSyncService.getSupabaseAnonKey();
-      final pharmacyId = int.tryParse(tenantConfig.pharmacyId) ?? 1;
+      final pharmacyId = int.tryParse(tenantConfig.pharmacyId);
+      final branchId = int.tryParse(targetBranchId ?? tenantConfig.branchId);
+      if (pharmacyId == null ||
+          branchId == null ||
+          pharmacyId <= 0 ||
+          branchId <= 0) {
+        debugPrint(
+            'Refusing to send chat without verified pharmacy/branch identity.');
+        return false;
+      }
 
       final msg = ChatMessage(
         id: _generateUuidV4(),
         pharmacyId: pharmacyId,
-        branchId: targetBranchId ?? tenantConfig.branchId,
+        branchId: branchId.toString(),
         deviceId: 'server-1',
         senderName: 'الصيدلي / الكاشير',
         senderRole: 'cashier',
@@ -459,7 +528,8 @@ class OwnerLiveSyncService {
       );
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        final list = List<ChatMessage>.from(chatMessagesNotifier.value)..add(msg);
+        final list = List<ChatMessage>.from(chatMessagesNotifier.value)
+          ..add(msg);
         chatMessagesNotifier.value = list;
         return true;
       }
@@ -475,7 +545,8 @@ class OwnerLiveSyncService {
     isScreenStreamingActive = true;
 
     _screenStreamTimer?.cancel();
-    _screenStreamTimer = Timer.periodic(const Duration(milliseconds: 600), (_) async {
+    _screenStreamTimer =
+        Timer.periodic(const Duration(milliseconds: 600), (_) async {
       if (!isScreenStreamingActive) return;
       await _captureAndBroadcastFrame('screen');
     });
@@ -488,7 +559,8 @@ class OwnerLiveSyncService {
 
   /// تهيئة كاميرا النظام
   static Future<void> _initCamera() async {
-    if (_cameraController != null && _cameraController!.value.isInitialized) return;
+    if (_cameraController != null && _cameraController!.value.isInitialized)
+      return;
     try {
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
@@ -512,7 +584,8 @@ class OwnerLiveSyncService {
     await _initCamera();
 
     _cameraStreamTimer?.cancel();
-    _cameraStreamTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
+    _cameraStreamTimer =
+        Timer.periodic(const Duration(milliseconds: 1000), (_) async {
       if (!isCameraStreamingActive) return;
       await _captureAndBroadcastFrame('camera');
     });
@@ -536,34 +609,44 @@ class OwnerLiveSyncService {
       String frameBase64 = '';
 
       if (channel == 'screen') {
-        final boundary = ScreenshotService.globalBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        final boundary = ScreenshotService.globalBoundaryKey.currentContext
+            ?.findRenderObject() as RenderRepaintBoundary?;
         if (boundary != null) {
           final ui.Image image = await boundary.toImage(pixelRatio: 0.8);
-          final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          final ByteData? byteData =
+              await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
             frameBase64 = base64Encode(byteData.buffer.asUint8List());
           }
         } else {
-          frameBase64 = await _renderScreenPlaceholderPng(tenantConfig.pharmacyName, tenantConfig.branchId);
+          frameBase64 = await _renderScreenPlaceholderPng(
+              tenantConfig.pharmacyName, tenantConfig.branchId);
         }
       } else {
         // كاميرا المراقبة CCTV: التقاط حقيقي إذا كانت الكاميرا مهيأة، أو محاكاة
-        if (_cameraController != null && _cameraController!.value.isInitialized) {
+        if (_cameraController != null &&
+            _cameraController!.value.isInitialized) {
           try {
             final XFile file = await _cameraController!.takePicture();
             final bytes = await file.readAsBytes();
             frameBase64 = base64Encode(bytes);
-          } catch(e) {
-            frameBase64 = await _renderCctvFrameToPng(tenantConfig.pharmacyName, tenantConfig.branchId);
+          } catch (e) {
+            frameBase64 = await _renderCctvFrameToPng(
+                tenantConfig.pharmacyName, tenantConfig.branchId);
           }
         } else {
-          frameBase64 = await _renderCctvFrameToPng(tenantConfig.pharmacyName, tenantConfig.branchId);
+          frameBase64 = await _renderCctvFrameToPng(
+              tenantConfig.pharmacyName, tenantConfig.branchId);
         }
       }
 
       if (frameBase64.isNotEmpty) {
+        final channelCode = channel == 'screen' ? '01' : '02';
+        final bId = int.tryParse(tenantConfig.branchId) ?? 2;
+        final deterministicId = '00000000-0000-4000-8000-${pharmacyId.toString().padLeft(6, '0')}$channelCode${bId.toString().padLeft(4, '0')}';
+
         final frame = StreamFrame(
-          id: _generateUuidV4(),
+          id: deterministicId,
           channel: channel,
           pharmacyId: pharmacyId,
           branchId: tenantConfig.branchId,
@@ -573,26 +656,30 @@ class OwnerLiveSyncService {
           timestamp: DateTime.now(),
         );
 
-        await http.post(
-          Uri.parse('$supabaseUrl/rest/v1/cloud_stream_frames'),
-          headers: {
-            ..._headers(apiKey),
-            'Prefer': 'resolution=merge-duplicates',
-          },
-          body: jsonEncode(frame.toJson()),
-        ).timeout(const Duration(seconds: 3));
+        await http
+            .post(
+              Uri.parse('$supabaseUrl/rest/v1/cloud_stream_frames'),
+              headers: {
+                ..._headers(apiKey),
+                'Prefer': 'resolution=merge-duplicates',
+              },
+              body: jsonEncode(frame.toJson()),
+            )
+            .timeout(const Duration(seconds: 3));
       }
     } catch (e) {
       debugPrint('Error in _captureAndBroadcastFrame ($channel): $e');
     }
   }
 
-  static Future<String> _renderCctvFrameToPng(String pharmacyName, String branchId) async {
+  static Future<String> _renderCctvFrameToPng(
+      String pharmacyName, String branchId) async {
     try {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 640, 360));
       final now = DateTime.now();
-      final timeStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      final timeStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
 
       // 1. خلفية الكاميرا الداكنة بتأثير المراقبة
       final bgPaint = Paint()..color = const Color(0xFF0F172A);
@@ -615,17 +702,24 @@ class OwnerLiveSyncService {
         ..color = const Color(0xFF10B981).withValues(alpha: 0.5)
         ..strokeWidth = 1.5
         ..style = PaintingStyle.stroke;
-      canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(200, 80, 240, 180), const Radius.circular(12)), focusPaint);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(const Rect.fromLTWH(200, 80, 240, 180),
+              const Radius.circular(12)),
+          focusPaint);
 
       // 4. مؤشر التسجيل المباشر REC 🔴
-      final recDotPaint = Paint()..color = (now.second % 2 == 0) ? const Color(0xFFEF4444) : Colors.transparent;
+      final recDotPaint = Paint()
+        ..color = (now.second % 2 == 0)
+            ? const Color(0xFFEF4444)
+            : Colors.transparent;
       canvas.drawCircle(const Offset(30, 30), 7, recDotPaint);
 
       final textPainter = TextPainter(textDirection: TextDirection.rtl);
-      
+
       textPainter.text = const TextSpan(
         text: 'REC • LIVE CCTV HD 1080p',
-        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+        style: TextStyle(
+            color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
       );
       textPainter.layout();
       textPainter.paint(canvas, const Offset(44, 22));
@@ -633,7 +727,10 @@ class OwnerLiveSyncService {
       // بيانات الصيدلية والفرع والتوقيت الحي
       textPainter.text = TextSpan(
         text: '$pharmacyName (فرع: $branchId)',
-        style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 14, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+            color: Color(0xFF38BDF8),
+            fontSize: 14,
+            fontWeight: FontWeight.bold),
       );
       textPainter.layout();
       textPainter.paint(canvas, const Offset(30, 320));
@@ -641,7 +738,11 @@ class OwnerLiveSyncService {
       final ltrPainter = TextPainter(textDirection: TextDirection.ltr);
       ltrPainter.text = TextSpan(
         text: '$timeStr  |  FPS: 15.0  |  CAM-01',
-        style: const TextStyle(color: Color(0xFF34D399), fontSize: 13, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+        style: const TextStyle(
+            color: Color(0xFF34D399),
+            fontSize: 13,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold),
       );
       ltrPainter.layout();
       ltrPainter.paint(canvas, const Offset(360, 322));
@@ -658,20 +759,27 @@ class OwnerLiveSyncService {
     return '';
   }
 
-  static Future<String> _renderScreenPlaceholderPng(String pharmacyName, String branchId) async {
+  static Future<String> _renderScreenPlaceholderPng(
+      String pharmacyName, String branchId) async {
     try {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 640, 360));
       final now = DateTime.now();
-      final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      final timeStr =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
 
       final bgPaint = Paint()..color = const Color(0xFF1E1B4B);
       canvas.drawRect(const Rect.fromLTWH(0, 0, 640, 360), bgPaint);
 
       final textPainter = TextPainter(textDirection: TextDirection.rtl);
       textPainter.text = TextSpan(
-        text: '🖥️ شاشة نظام كاشير PharmaOS المباشرة\n$pharmacyName - فرع #$branchId\nالوقت الحي: $timeStr\nالنظام في وضع الاستعداد والبيع الفوري',
-        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, height: 1.5),
+        text:
+            '🖥️ شاشة نظام كاشير PharmaOS المباشرة\n$pharmacyName - فرع #$branchId\nالوقت الحي: $timeStr\nالنظام في وضع الاستعداد والبيع الفوري',
+        style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            height: 1.5),
       );
       textPainter.layout(maxWidth: 580);
       textPainter.paint(canvas, const Offset(40, 110));
@@ -701,7 +809,8 @@ class OwnerLiveSyncService {
       performedBy: 'المدير العام (عن بعد)',
       createdAt: DateTime.now(),
     );
-    final list = List<OwnerAuditAction>.from(auditLogsNotifier.value)..insert(0, action);
+    final list = List<OwnerAuditAction>.from(auditLogsNotifier.value)
+      ..insert(0, action);
     auditLogsNotifier.value = list;
   }
 }
