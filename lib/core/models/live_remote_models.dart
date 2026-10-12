@@ -151,8 +151,10 @@ class StreamFrame {
   });
 
   factory StreamFrame.fromJson(Map<String, dynamic> json) {
-    final rawFrame = json['frame_data']?.toString() ?? json['frame_base64']?.toString() ?? '';
-    final rawTime = json['created_at'] ?? json['timestamp'];
+    final rawFrame = (json['frame_base64'] != null && json['frame_base64'].toString().isNotEmpty)
+        ? json['frame_base64'].toString()
+        : (json['frame_data']?.toString() ?? '');
+    final rawTime = json['timestamp'] ?? json['created_at'];
     return StreamFrame(
       id: json['id']?.toString() ?? '',
       channel: json['channel']?.toString() ?? json['stream_type']?.toString() ?? 'screen',

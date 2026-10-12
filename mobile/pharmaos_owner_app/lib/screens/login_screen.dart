@@ -48,29 +48,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _processQrScanned(String rawValue) async {
     if (rawValue.trim().isEmpty) return;
 
-    // 1. فحص اتصال الإنترنت قبل البدء
-    final isOnline = await OwnerApiService.hasInternetConnection();
-    if (!isOnline) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _statusText = '';
-          _errorMessage = '⚠️ لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل شبكة Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              '⚠️ الهاتف غير متصل بالإنترنت. يرجى تفعيل Wi-Fi أو البيانات أولاً للربط بالسيرفر.',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            backgroundColor: Colors.red.shade800,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -105,15 +82,6 @@ class _LoginScreenState extends State<LoginScreen> {
   /// فتح ماسح الباركود وQR Code بالكاميرا مع معالجة كاملة للأجهزة القديمة
   Future<void> _openQrScanner() async {
     setState(() => _errorMessage = null);
-
-    // التحقق من الإنترنت قبل تشغيل الكاميرا
-    final isOnline = await OwnerApiService.hasInternetConnection();
-    if (!isOnline) {
-      if (mounted) {
-        _showNoInternetDialog();
-      }
-      return;
-    }
 
     final controller = MobileScannerController(
       detectionSpeed: DetectionSpeed.normal,
@@ -303,38 +271,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  /// حوار تنبيه انقطاع الإنترنت
-  void _showNoInternetDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.wifi_off_rounded, color: Colors.amber, size: 28),
-              SizedBox(width: 10),
-              Text('لا يوجد اتصال بالإنترنت', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: const Text(
-            'الهاتف غير متصل بالإنترنت حالياً.\n\nيرجى التأكد من تشغيل شبكة Wi-Fi أو بيانات الهاتف المحمول لتتمكن من مسح الباركود والربط بالسيرفر السحابي وقاعدة بيانات الصيدلية.',
-            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-          ),
-          actions: [
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('حسناً، فهمت'),
-            ),
-          ],
         ),
       ),
     );

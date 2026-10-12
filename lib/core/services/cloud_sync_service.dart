@@ -1,6 +1,5 @@
 // خدمة المزامنة السحابية متعددة الصيدليات والفروع (Supabase Cloud Sync Engine) - PharmaOS
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +7,6 @@ import 'package:drift/drift.dart' as drift;
 
 import '../di/service_locator.dart';
 import '../database/app_database.dart';
-import '../models/tenant_config.dart';
 import 'license_service.dart';
 
 class CloudSyncResult {
@@ -28,9 +26,18 @@ class CloudSyncResult {
 }
 
 class CloudSyncService {
-  // إعدادات الاتصال بمشروع Supabase
-  static const String defaultSupabaseUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
-  static const String defaultSupabaseAnonKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
+  // إعدادات الاتصال بمشروع Supabase (يدعم متغيرات البيئة مع قيم افتراضية مؤمنة تمنع عودة null)
+  static const String defaultSupabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
+  );
+  static const String defaultSupabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+      defaultValue: 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+    ),
+  );
 
   static const String _prefCloudSyncEnabled = 'cloud_sync_enabled_v1';
   static const String _prefCustomSupabaseUrl = 'custom_supabase_url_v1';
@@ -49,16 +56,20 @@ class CloudSyncService {
     await prefs.setBool(_prefCloudSyncEnabled, enabled);
   }
 
-  /// الحصول على رابط Supabase
+  /// الحصول على رابط Supabase (لا يعود أبداً بقيمة null أو فارغة)
   static Future<String> getSupabaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_prefCustomSupabaseUrl) ?? defaultSupabaseUrl;
+    final saved = prefs.getString(_prefCustomSupabaseUrl);
+    if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+    return defaultSupabaseUrl;
   }
 
-  /// الحصول على مفتاح Supabase
+  /// الحصول على مفتاح Supabase (لا يعود أبداً بقيمة null أو فارغة)
   static Future<String> getSupabaseAnonKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_prefCustomSupabaseKey) ?? defaultSupabaseAnonKey;
+    final saved = prefs.getString(_prefCustomSupabaseKey);
+    if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+    return defaultSupabaseAnonKey;
   }
 
   /// الحصول على وقت آخر مزامنة ناجحة

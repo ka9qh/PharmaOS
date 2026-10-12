@@ -2,13 +2,24 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 
 class OwnerApiService {
+  static const String defaultSupabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
+  );
+  static const String defaultSupabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+      defaultValue: 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+    ),
+  );
+
   static const String _prefPharmacyId = 'owner_pharmacy_id_v1';
   static const String _prefBranchId = 'owner_branch_id_v1';
   static const String _prefPharmacyName = 'owner_pharmacy_name_v1';
@@ -40,33 +51,33 @@ class OwnerApiService {
     return defaultBranchId;
   }
 
-  /// فحص توفر اتصال حقيقي بالإنترنت قبل محاولة مسح الباركود أو الربط
+  /// فحص توفر اتصال حقيقي بالإنترنت وتسجيل أي أخطاء بالاتصال
   static Future<bool> hasInternetConnection() async {
     try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none) &&
-          connectivityResult.length == 1) {
-        return false;
-      }
+      final config = await getConfig();
+      final url = config?.supabaseUrl ?? defaultSupabaseUrl;
+      final key = config?.supabaseKey ?? defaultSupabaseAnonKey;
+
       final response = await http.get(
-        Uri.parse(
-            'https://bwgilcmzffcwdcxhfyfk.supabase.co/rest/v1/pharmacies?select=id&limit=1'),
-        headers: {
-          'apikey': 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
-          'Authorization':
-              'Bearer sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
-        },
-      ).timeout(const Duration(seconds: 4));
-      return response.statusCode >= 200 && response.statusCode < 500;
-    } catch (_) {
-      try {
-        final res = await http
-            .get(Uri.parse('https://www.google.com'))
-            .timeout(const Duration(seconds: 3));
-        return res.statusCode == 200;
-      } catch (_) {
-        return false;
+        Uri.parse('$url/rest/v1/pharmacies?select=id&limit=1'),
+        headers: _headers(key),
+      ).timeout(const Duration(seconds: 5));
+      if (response.statusCode >= 200 && response.statusCode < 500) {
+        return true;
       }
+      debugPrint('hasInternetConnection Supabase returned status ${response.statusCode}: ${response.body}');
+    } catch (e) {
+      debugPrint('hasInternetConnection Supabase ping error: $e');
+    }
+
+    try {
+      final res = await http
+          .get(Uri.parse('https://www.cloudflare.com'))
+          .timeout(const Duration(seconds: 4));
+      return res.statusCode >= 200 && res.statusCode < 500;
+    } catch (e) {
+      debugPrint('hasInternetConnection fallback ping error: $e');
+      return false;
     }
   }
 
@@ -100,6 +111,9 @@ class OwnerApiService {
     final pharmacyId = prefs.getInt(_prefPharmacyId);
     if (pharmacyId == null) return null;
 
+    final savedUrl = prefs.getString(_prefSupabaseUrl);
+    final savedKey = prefs.getString(_prefSupabaseKey);
+
     return OwnerTenantConfig(
       pharmacyId: pharmacyId,
       branchId: prefs.getInt(_prefBranchId) ?? 2,
@@ -107,10 +121,12 @@ class OwnerApiService {
       licenseKey: prefs.getString(_prefLicenseKey) ?? '',
       licenseType: prefs.getString(_prefLicenseType) ?? 'single',
       managerName: prefs.getString(_prefManagerName) ?? 'المدير العام',
-      supabaseUrl: prefs.getString(_prefSupabaseUrl) ??
-          'https://bwgilcmzffcwdcxhfyfk.supabase.co',
-      supabaseKey: prefs.getString(_prefSupabaseKey) ??
-          'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
+      supabaseUrl: (savedUrl != null && savedUrl.trim().isNotEmpty)
+          ? savedUrl.trim()
+          : defaultSupabaseUrl,
+      supabaseKey: (savedKey != null && savedKey.trim().isNotEmpty)
+          ? savedKey.trim()
+          : defaultSupabaseAnonKey,
       branches: prefs.getStringList(_prefBranchesList) ?? ['الفرع الرئيسي'],
     );
   }
@@ -160,23 +176,13 @@ class OwnerApiService {
       throw Exception('يرجى تصوير باركود الاتصال المعروض في شاشة النظام');
     }
 
-    // 0. التحقق من توفر الإنترنت الحقيقي أولاً
-    final isOnline = await hasInternetConnection();
-    if (!isOnline) {
-      throw Exception(
-          'لا يوجد اتصال بالإنترنت في الهاتف!\nيرجى تشغيل Wi-Fi أو بيانات الهاتف والمحاولة مجدداً.');
-    }
-
-    const defaultUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
-    const defaultKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
-
     int? parsedPharmacyId;
     int? parsedBranchId;
     String? parsedPharmacyName;
     String? parsedLicenseKey;
     String? parsedLicenseType;
-    String supabaseUrl = defaultUrl;
-    String supabaseKey = defaultKey;
+    String supabaseUrl = defaultSupabaseUrl;
+    String supabaseKey = defaultSupabaseAnonKey;
 
     // 1. فحص إذا كان الرمز عبارة عن JSON مشفر من بطاقة الترخيص
     if (key.startsWith('{') && key.endsWith('}')) {
@@ -377,14 +383,8 @@ class OwnerApiService {
             'باركود الاتصال غير صالح أو لم يتم العثور على الصيدلية بالسيرفر.');
       }
     } catch (e) {
-      if (e is Exception &&
-          !e.toString().contains('SocketException') &&
-          !e.toString().contains('TimeoutException')) {
-        rethrow;
-      }
-      debugPrint('loginWithActivationKey network error: $e');
-      throw Exception(
-          'تعذر الاتصال بالخادم السحابي. يرجى التحقق من اتصال الإنترنت بالجهاز.');
+      debugPrint('loginWithActivationKey error: $e');
+      throw Exception('فشل الاتصال بالخادم السحابي: $e');
     }
   }
 
@@ -489,8 +489,13 @@ class OwnerApiService {
         if (data is List && data.isNotEmpty) {
           return StreamFrame.fromJson(data.first);
         }
+      } else {
+        debugPrint(
+            'fetchLiveStreamFrame failed (${response.statusCode}): ${response.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchLiveStreamFrame error ($channel): $e');
+    }
     return null;
   }
 
@@ -572,7 +577,7 @@ class OwnerApiService {
         if (newPurchasePrice != null) 'purchase_price': newPurchasePrice,
       };
 
-      await http
+      final patchRes = await http
           .patch(
             Uri.parse(
                 '${config.supabaseUrl}/rest/v1/cloud_medicines?id=eq.$medicineId'),
@@ -580,7 +585,13 @@ class OwnerApiService {
             body: jsonEncode(patchPayload),
           )
           .timeout(const Duration(seconds: 8));
-    } catch (_) {}
+      if (patchRes.statusCode < 200 || patchRes.statusCode >= 300) {
+        debugPrint(
+            'updateMedicinePrice failed (${patchRes.statusCode}): ${patchRes.body}');
+      }
+    } catch (e) {
+      debugPrint('updateMedicinePrice error: $e');
+    }
 
     return true;
   }
@@ -625,8 +636,13 @@ class OwnerApiService {
         if (data is List && data.isNotEmpty) {
           return data.map((j) => CloudSupplier.fromJson(j)).toList();
         }
+      } else {
+        debugPrint(
+            'fetchSuppliers failed (${response.statusCode}): ${response.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchSuppliers error: $e');
+    }
     return [];
   }
 
@@ -713,8 +729,13 @@ class OwnerApiService {
         if (data is List) {
           return data.map((j) => ChatMessage.fromJson(j)).toList();
         }
+      } else {
+        debugPrint(
+            'fetchChatMessages failed (${response.statusCode}): ${response.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchChatMessages error: $e');
+    }
 
     return [];
   }
@@ -778,8 +799,13 @@ class OwnerApiService {
         if (data is List) {
           return data.map((j) => CloudSale.fromJson(j)).toList();
         }
+      } else {
+        debugPrint(
+            'fetchSales failed (${response.statusCode}): ${response.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchSales error: $e');
+    }
     return [];
   }
 
@@ -801,8 +827,13 @@ class OwnerApiService {
         if (data is List) {
           return data.map((j) => CloudDayClosing.fromJson(j)).toList();
         }
+      } else {
+        debugPrint(
+            'fetchDayClosings failed (${response.statusCode}): ${response.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchDayClosings error: $e');
+    }
     return [];
   }
 
@@ -829,8 +860,13 @@ class OwnerApiService {
         if (data is List) {
           return data.map((j) => OwnerTeleConsultation.fromJson(j)).toList();
         }
+      } else {
+        debugPrint(
+            'fetchTeleConsultations failed (${response.statusCode}): ${response.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fetchTeleConsultations error: $e');
+    }
     return [];
   }
 
@@ -863,8 +899,12 @@ class OwnerApiService {
           )
           .timeout(const Duration(seconds: 10));
 
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (_) {
+      if (response.statusCode >= 200 && response.statusCode < 300) return true;
+      debugPrint(
+          'replyConsultation failed (${response.statusCode}): ${response.body}');
+      return false;
+    } catch (e) {
+      debugPrint('replyConsultation error: $e');
       return false;
     }
   }
