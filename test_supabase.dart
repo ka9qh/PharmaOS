@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 
 void main() async {
   const supabaseUrl = 'https://bwgilcmzffcwdcxhfyfk.supabase.co';
-  const apiKey = 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16';
+  const apiKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3Z2lsY216ZmZjd2RjeGhmeWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5MDMzMzEsImV4cCI6MjEwNDQ3OTMzMX0.ldSLO0S-OvUb1RR9ewMkM-COVvlon0-hl6tBh4VsjGA';
   final headers = {
     'apikey': apiKey,
     'Authorization': 'Bearer $apiKey',

@@ -117,7 +117,7 @@ class OwnerApiService {
       supabaseUrl: (savedUrl != null && savedUrl.trim().isNotEmpty)
           ? savedUrl.trim()
           : defaultSupabaseUrl,
-      supabaseKey: (savedKey != null && savedKey.trim().isNotEmpty)
+      supabaseKey: (savedKey != null && savedKey.trim().isNotEmpty && !savedKey.contains('sb_publishable'))
           ? savedKey.trim()
           : defaultSupabaseAnonKey,
       branches: prefs.getStringList(_prefBranchesList) ?? ['الفرع الرئيسي'],
@@ -192,7 +192,8 @@ class OwnerApiService {
           supabaseUrl = jsonMap['supabase_url'].toString();
         }
         if (jsonMap['supabase_key'] != null &&
-            jsonMap['supabase_key'].toString().isNotEmpty) {
+            jsonMap['supabase_key'].toString().isNotEmpty &&
+            !jsonMap['supabase_key'].toString().contains('sb_publishable')) {
           supabaseKey = jsonMap['supabase_key'].toString();
         }
       } catch (_) {}

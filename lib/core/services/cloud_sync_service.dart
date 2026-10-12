@@ -60,7 +60,7 @@ class CloudSyncService {
   static Future<String> getSupabaseAnonKey() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefCustomSupabaseKey);
-    if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+    if (saved != null && saved.trim().isNotEmpty && !saved.contains('sb_publishable')) return saved.trim();
     return defaultSupabaseAnonKey;
   }
 
