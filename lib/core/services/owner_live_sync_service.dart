@@ -19,6 +19,7 @@ import 'cloud_sync_service.dart';
 import 'license_service.dart';
 import 'multi_destination_backup_service.dart';
 import 'screenshot_service.dart';
+import '../config/supabase_config.dart';
 import '../../features/reports/domain/repositories/reports_repository.dart';
 
 class OwnerLiveSyncService {
@@ -29,6 +30,8 @@ class OwnerLiveSyncService {
 
   static bool isScreenStreamingActive = false;
   static bool isCameraStreamingActive = false;
+  static bool _isPolling = false;
+  static int _consecutiveFailures = 0;
 
   static final ValueNotifier<bool> isConnectedNotifier =
       ValueNotifier<bool>(false);
@@ -63,7 +66,7 @@ class OwnerLiveSyncService {
   /// تشغيل خدمة المزامنة الحية والاستماع لطلبات تطبيق المدير
   static void start() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _pollRelay();
     });
     // تشغيل جولة فورية
@@ -78,6 +81,7 @@ class OwnerLiveSyncService {
     isCameraStreamingActive = false;
     _cameraController?.dispose();
     _cameraController = null;
+    _isPolling = false;
   }
 
   static Map<String, String> _headers(String apiKey) => {
@@ -89,6 +93,9 @@ class OwnerLiveSyncService {
 
   /// استطلاع الأوامر ورسائل الدردشة الحية من السيرفر
   static Future<void> _pollRelay() async {
+    if (_isPolling) return;
+    _isPolling = true;
+
     try {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
@@ -110,9 +117,10 @@ class OwnerLiveSyncService {
           '$supabaseUrl/rest/v1/remote_commands?pharmacy_id=eq.$pharmacyId&branch_id=eq.$branchId&status=eq.pending&order=created_at.asc&limit=10';
       final cmdRes = await http
           .get(Uri.parse(cmdUrl), headers: _headers(apiKey))
-          .timeout(const Duration(seconds: 5));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (cmdRes.statusCode >= 200 && cmdRes.statusCode < 300) {
+        _consecutiveFailures = 0;
         isConnectedNotifier.value = true;
         final data = jsonDecode(cmdRes.body);
         if (data is List) {
@@ -131,9 +139,11 @@ class OwnerLiveSyncService {
           '$supabaseUrl/rest/v1/owner_chat_messages?pharmacy_id=eq.$pharmacyId&branch_id=eq.$branchId&sender_type=eq.owner&read_at=is.null&order=created_at.asc&limit=10';
       final msgRes = await http
           .get(Uri.parse(msgUrl), headers: _headers(apiKey))
-          .timeout(const Duration(seconds: 5));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (msgRes.statusCode >= 200 && msgRes.statusCode < 300) {
+        _consecutiveFailures = 0;
+        isConnectedNotifier.value = true;
         final data = jsonDecode(msgRes.body);
         if (data is List && data.isNotEmpty) {
           for (final item in data) {
@@ -148,9 +158,13 @@ class OwnerLiveSyncService {
         }
       }
     } catch (e) {
-      isConnectedNotifier.value = false;
-      debugPrint('Owner sync poll failed: $e');
-      // النظام أوفلاين مؤقتاً
+      _consecutiveFailures++;
+      if (_consecutiveFailures >= 3) {
+        isConnectedNotifier.value = false;
+      }
+      debugPrint('Owner sync poll failed (attempt $_consecutiveFailures): $e');
+    } finally {
+      _isPolling = false;
     }
   }
 
@@ -525,13 +539,15 @@ class OwnerLiveSyncService {
         Uri.parse('$supabaseUrl/rest/v1/owner_chat_messages'),
         headers: _headers(apiKey),
         body: jsonEncode(msg.toJson()),
-      );
+      ).timeout(SupabaseConfig.requestTimeout);
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final list = List<ChatMessage>.from(chatMessagesNotifier.value)
           ..add(msg);
         chatMessagesNotifier.value = list;
         return true;
+      } else {
+        debugPrint('sendChatMessage failed with status ${res.statusCode}: ${res.body}');
       }
     } catch (e) {
       debugPrint('Error sending chat message from desktop: $e');
@@ -665,7 +681,7 @@ class OwnerLiveSyncService {
               },
               body: jsonEncode(frame.toJson()),
             )
-            .timeout(const Duration(seconds: 3));
+            .timeout(const Duration(seconds: 25));
       }
     } catch (e) {
       debugPrint('Error in _captureAndBroadcastFrame ($channel): $e');

@@ -57,8 +57,12 @@ class _DesktopLiveChatScreenState extends State<DesktopLiveChatScreen> with Sing
       if (success) {
         _scrollToBottom();
       } else {
+        _textController.text = text;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر إرسال الرسالة، تأكد من اتصال الإنترنت')),
+          const SnackBar(
+            content: Text('تعذر إرسال الرسالة حالياً، يرجى التحقق من جودة الاتصال وإعادة المحاولة'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     }

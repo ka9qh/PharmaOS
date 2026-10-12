@@ -39,7 +39,7 @@ class _OwnerPortalScreenState extends State<OwnerPortalScreen> {
       List<TeleConsultation> consultations = [];
       try {
         consultations = await TelePharmacyService.fetchConsultations(customPharmacyId: pId)
-            .timeout(const Duration(seconds: 4), onTimeout: () => []);
+            .timeout(const Duration(seconds: 25), onTimeout: () => []);
       } catch (e) {
         debugPrint('Consultations fetch warning: $e');
       }

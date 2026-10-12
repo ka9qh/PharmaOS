@@ -10,6 +10,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/security/password_hasher.dart';
 import '../../../../core/services/license_service.dart';
 import '../../../../core/services/cloud_sync_service.dart';
+import '../../../../core/config/supabase_config.dart';
 import '../../../settings/domain/repositories/settings_repository.dart';
 
 class SecureActivationTokensCard extends StatefulWidget {
@@ -84,7 +85,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
               'Content-Type': 'application/json',
             },
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -131,7 +132,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
             },
             body: jsonEncode({'is_active': newStatus}),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         await _loadLinkedOwnerDevices();
@@ -189,7 +190,7 @@ class _SecureActivationTokensCardState extends State<SecureActivationTokensCard>
             'apikey': apiKey,
             'Authorization': 'Bearer $apiKey',
           },
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(SupabaseConfig.requestTimeout);
 
         await _loadLinkedOwnerDevices();
         if (mounted) {

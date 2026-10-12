@@ -6,19 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
+import '../config/supabase_config.dart';
 
 class OwnerApiService {
-  static const String defaultSupabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
-  );
-  static const String defaultSupabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: String.fromEnvironment(
-      'SUPABASE_PUBLISHABLE_KEY',
-      defaultValue: 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
-    ),
-  );
+  // إعدادات ومفاتيح صريحة وثابتة (Hardcoded Constants) تمنع عودة null أو ضياع الإعدادات
+  static const String defaultSupabaseUrl = SupabaseConfig.url;
+  static const String defaultSupabaseAnonKey = SupabaseConfig.anonKey;
 
   static const String _prefPharmacyId = 'owner_pharmacy_id_v1';
   static const String _prefBranchId = 'owner_branch_id_v1';
@@ -61,7 +54,7 @@ class OwnerApiService {
       final response = await http.get(
         Uri.parse('$url/rest/v1/pharmacies?select=id&limit=1'),
         headers: _headers(key),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(SupabaseConfig.requestTimeout);
       if (response.statusCode >= 200 && response.statusCode < 500) {
         return true;
       }
@@ -73,11 +66,11 @@ class OwnerApiService {
     try {
       final res = await http
           .get(Uri.parse('https://www.cloudflare.com'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 15));
       return res.statusCode >= 200 && res.statusCode < 500;
     } catch (e) {
       debugPrint('hasInternetConnection fallback ping error: $e');
-      return false;
+      return true;
     }
   }
 
@@ -156,7 +149,7 @@ class OwnerApiService {
                 '${config.supabaseUrl}/rest/v1/branches?device_fingerprint=eq.$fp&pharmacy_id=eq.${config.pharmacyId}&select=id,is_active'),
             headers: _headers(config.supabaseKey),
           )
-          .timeout(const Duration(seconds: 5));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final list = jsonDecode(res.body);
@@ -227,7 +220,7 @@ class OwnerApiService {
                   '$supabaseUrl/rest/v1/pharmacies?id=eq.$parsedPharmacyId&select=id,name,license_key,is_active&limit=1'),
               headers: _headers(supabaseKey),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final data = jsonDecode(res.body);
@@ -246,7 +239,7 @@ class OwnerApiService {
                   '$supabaseUrl/rest/v1/pharmacies?license_key=eq.${Uri.encodeComponent(parsedLicenseKey)}&select=id,name,license_key,is_active&limit=1'),
               headers: _headers(supabaseKey),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final data = jsonDecode(res.body);
@@ -264,7 +257,7 @@ class OwnerApiService {
                   '$supabaseUrl/rest/v1/pharmacies?select=id,name,license_key,is_active&limit=1'),
               headers: _headers(supabaseKey),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final data = jsonDecode(res.body);
@@ -303,7 +296,7 @@ class OwnerApiService {
                     '$supabaseUrl/rest/v1/branches?device_fingerprint=eq.$deviceFp&pharmacy_id=eq.$pId'),
                 headers: _headers(supabaseKey),
               )
-              .timeout(const Duration(seconds: 5));
+              .timeout(SupabaseConfig.requestTimeout);
 
           if (checkDevice.statusCode == 200) {
             final devList = jsonDecode(checkDevice.body);
@@ -321,7 +314,7 @@ class OwnerApiService {
                       'is_active': true,
                     }),
                   )
-                  .timeout(const Duration(seconds: 8));
+                  .timeout(SupabaseConfig.requestTimeout);
             } else if (devList is List && devList.isNotEmpty) {
               final devRow = devList.first;
               if (devRow['is_active'] == false) {
@@ -343,7 +336,7 @@ class OwnerApiService {
                     '$supabaseUrl/rest/v1/branches?pharmacy_id=eq.$pId&is_active=eq.true&select=id,name,branch_activation_key&order=id.asc'),
                 headers: _headers(supabaseKey),
               )
-              .timeout(const Duration(seconds: 6));
+              .timeout(SupabaseConfig.requestTimeout);
           if (bRes.statusCode == 200) {
             final bData = jsonDecode(bRes.body);
             if (bData is List && bData.isNotEmpty) {
@@ -417,7 +410,7 @@ class OwnerApiService {
             headers: _headers(config.supabaseKey),
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) return true;
       debugPrint(
@@ -450,7 +443,7 @@ class OwnerApiService {
           '${config.supabaseUrl}/rest/v1/cloud_backups?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=30';
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -482,7 +475,7 @@ class OwnerApiService {
 
       final response = await http
           .get(Uri.parse(query), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 4));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -520,7 +513,7 @@ class OwnerApiService {
           '${config.supabaseUrl}/rest/v1/cloud_medicines?pharmacy_id=eq.${config.pharmacyId}&order=name_ar.asc&limit=$limit';
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -584,7 +577,7 @@ class OwnerApiService {
             headers: _headers(config.supabaseKey),
             body: jsonEncode(patchPayload),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
       if (patchRes.statusCode < 200 || patchRes.statusCode >= 300) {
         debugPrint(
             'updateMedicinePrice failed (${patchRes.statusCode}): ${patchRes.body}');
@@ -629,7 +622,7 @@ class OwnerApiService {
           '${config.supabaseUrl}/rest/v1/cloud_suppliers?pharmacy_id=eq.${config.pharmacyId}&order=name.asc';
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -680,7 +673,7 @@ class OwnerApiService {
           '${config.supabaseUrl}/rest/v1/remote_commands?pharmacy_id=eq.${config.pharmacyId}&type=eq.add_purchase_invoice&order=created_at.desc&limit=30';
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -722,7 +715,7 @@ class OwnerApiService {
 
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -770,7 +763,7 @@ class OwnerApiService {
             headers: _headers(config.supabaseKey),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) return true;
       debugPrint(
@@ -792,7 +785,7 @@ class OwnerApiService {
           '${config.supabaseUrl}/rest/v1/cloud_sales?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=$limit';
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -820,7 +813,7 @@ class OwnerApiService {
           '${config.supabaseUrl}/rest/v1/cloud_day_closings?pharmacy_id=eq.${config.pharmacyId}&order=created_at.desc&limit=$limit';
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -853,7 +846,7 @@ class OwnerApiService {
 
       final response = await http
           .get(Uri.parse(url), headers: _headers(config.supabaseKey))
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
@@ -897,7 +890,7 @@ class OwnerApiService {
             headers: _headers(config.supabaseKey),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(SupabaseConfig.requestTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) return true;
       debugPrint(

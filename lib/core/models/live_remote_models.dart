@@ -124,6 +124,8 @@ class ChatMessage {
         'branch_id': branchId != null ? int.tryParse(branchId!) : null,
         'sender_type': senderRole == 'owner' ? 'owner' : 'cashier',
         'message_text': text,
+        'sender_name': senderName,
+        'sender_role': senderRole,
         'attachment_url': imageUrl ?? imageBase64 ?? audioBase64,
         'created_at': createdAt.toIso8601String(),
       };
@@ -168,18 +170,20 @@ class StreamFrame {
   }
 
   Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{
+    final validId = (id.isNotEmpty && id.contains('-') && id.length == 36)
+        ? id
+        : '00000000-0000-4000-8000-${pharmacyId.toString().padLeft(6, '0')}${channel == 'screen' ? '01' : '02'}${(int.tryParse(branchId) ?? 2).toString().padLeft(4, '0')}';
+    return {
+      'id': validId,
       'pharmacy_id': pharmacyId,
       'branch_id': int.tryParse(branchId) ?? 2,
       'stream_type': channel,
       'channel': channel,
       'frame_data': frameBase64,
+      'frame_base64': frameBase64,
+      'fps': fps,
       'created_at': timestamp.toIso8601String(),
     };
-    if (id.isNotEmpty && id.contains('-') && id.length == 36) {
-      map['id'] = id;
-    }
-    return map;
   }
 }
 

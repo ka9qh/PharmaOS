@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
 
+import '../config/supabase_config.dart';
 import '../di/service_locator.dart';
 import '../database/app_database.dart';
 import 'license_service.dart';
@@ -26,18 +27,9 @@ class CloudSyncResult {
 }
 
 class CloudSyncService {
-  // إعدادات الاتصال بمشروع Supabase (يدعم متغيرات البيئة مع قيم افتراضية مؤمنة تمنع عودة null)
-  static const String defaultSupabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://bwgilcmzffcwdcxhfyfk.supabase.co',
-  );
-  static const String defaultSupabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: String.fromEnvironment(
-      'SUPABASE_PUBLISHABLE_KEY',
-      defaultValue: 'sb_publishable_fS45ChjUqSx9LV3IBjny_A_kv048V16',
-    ),
-  );
+  // إعدادات ومفاتيح صريحة وثابتة (Hardcoded Constants) تمنع عودة null أو ضياع الإعدادات
+  static const String defaultSupabaseUrl = SupabaseConfig.url;
+  static const String defaultSupabaseAnonKey = SupabaseConfig.anonKey;
 
   static const String _prefCloudSyncEnabled = 'cloud_sync_enabled_v1';
   static const String _prefCustomSupabaseUrl = 'custom_supabase_url_v1';
@@ -125,7 +117,7 @@ class CloudSyncService {
               },
               body: jsonEncode(pharmacyPayload),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
           final pData = jsonDecode(pRes.body);
@@ -174,7 +166,7 @@ class CloudSyncService {
               },
               body: jsonEncode(salesPayload),
             )
-            .timeout(const Duration(seconds: 15));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
           syncedSalesCount = recentSales.length;
@@ -212,7 +204,7 @@ class CloudSyncService {
               },
               body: jsonEncode(closingsPayload),
             )
-            .timeout(const Duration(seconds: 15));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
           syncedClosingsCount = closings.length;
@@ -250,7 +242,7 @@ class CloudSyncService {
               },
               body: jsonEncode(medsPayload),
             )
-            .timeout(const Duration(seconds: 15));
+            .timeout(SupabaseConfig.requestTimeout);
 
         if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
           syncedMedsCount = activeMedicines.length;
@@ -272,7 +264,7 @@ class CloudSyncService {
       debugPrint('CloudSyncService error: $e');
       return CloudSyncResult(
         isSuccess: false,
-        message: 'تعذر الاتصال بالسيرفر السحابي حالياً (النظام يعمل محلياً بكفاءة 100%)',
+        message: 'تعذر الاتصال بالسيرفر السحابي: $e',
       );
     }
   }
