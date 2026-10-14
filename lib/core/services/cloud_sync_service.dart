@@ -49,12 +49,6 @@ class CloudSyncService {
     }
   }
 
-  void _handleIncomingCommand(Map<String, dynamic> payload) {
-    final command = payload['command'];
-    if (command == 'START_CCTV' || command == 'START_SCREEN_STREAM') {
-      // معالجة الأوامر في الخلفية دون تعطيل الاتصال الأساسي
-    }
-  }
 
   // إعدادات ومفاتيح صريحة وثابتة (Hardcoded Constants) تمنع عودة null أو ضياع الإعدادات
   static const String defaultSupabaseUrl = SupabaseConfig.url;
@@ -81,7 +75,7 @@ class CloudSyncService {
   static Future<String> getSupabaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefCustomSupabaseUrl);
-    if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+    if (saved != null && saved.trim().startsWith('http')) return saved.trim();
     return defaultSupabaseUrl;
   }
 
@@ -89,7 +83,7 @@ class CloudSyncService {
   static Future<String> getSupabaseAnonKey() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefCustomSupabaseKey);
-    if (saved != null && saved.trim().isNotEmpty && !saved.contains('sb_publishable')) return saved.trim();
+    if (saved != null && saved.trim().length > 50 && !saved.contains('sb_publishable')) return saved.trim();
     return defaultSupabaseAnonKey;
   }
 
@@ -102,9 +96,10 @@ class CloudSyncService {
   }
 
   static Map<String, String> _getHeaders(String apiKey) {
+    final key = apiKey.trim().isNotEmpty ? apiKey.trim() : SupabaseConfig.anonKey;
     return {
-      'apikey': apiKey,
-      'Authorization': 'Bearer $apiKey',
+      'apikey': key,
+      'Authorization': 'Bearer $key',
       'Content-Type': 'application/json',
       'Prefer': 'return=minimal',
     };
@@ -162,9 +157,11 @@ class CloudSyncService {
               await LicenseService.saveTenantConfig(tenantConfig);
             }
           }
+        } else {
+          debugPrint('[CloudSync] pharmacies register failed with status [${pRes.statusCode}]: ${pRes.body}');
         }
-      } catch (_) {
-        // الاستمرار حتى في حال وجود اتصال متقطع
+      } catch (e) {
+        debugPrint('[CloudSync] pharmacies register exception: $e');
       }
 
       // 2. مزامنة فواتير المبيعات الحديثة (Cloud Sales)
@@ -204,6 +201,9 @@ class CloudSyncService {
 
         if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
           syncedSalesCount = recentSales.length;
+          debugPrint('[CloudSync] cloud_sales synced successfully ($syncedSalesCount records)');
+        } else {
+          debugPrint('[CloudSync] cloud_sales failed with status [${res.statusCode}]: ${res.body}');
         }
       }
 
@@ -242,6 +242,9 @@ class CloudSyncService {
 
         if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
           syncedClosingsCount = closings.length;
+          debugPrint('[CloudSync] cloud_day_closings synced successfully ($syncedClosingsCount records)');
+        } else {
+          debugPrint('[CloudSync] cloud_day_closings failed with status [${res.statusCode}]: ${res.body}');
         }
       }
 
@@ -280,6 +283,9 @@ class CloudSyncService {
 
         if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
           syncedMedsCount = activeMedicines.length;
+          debugPrint('[CloudSync] cloud_medicines synced successfully ($syncedMedsCount records)');
+        } else {
+          debugPrint('[CloudSync] cloud_medicines failed with status [${res.statusCode}]: ${res.body}');
         }
       }
 

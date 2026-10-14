@@ -22,6 +22,9 @@ class _DesktopLiveChatScreenState extends State<DesktopLiveChatScreen> with Sing
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     OwnerFloatingNotification.clearUnreadChat();
+    OwnerLiveSyncService.fetchChatMessages().then((_) {
+      if (mounted) _scrollToBottom();
+    });
   }
 
   @override
@@ -58,10 +61,15 @@ class _DesktopLiveChatScreenState extends State<DesktopLiveChatScreen> with Sing
         _scrollToBottom();
       } else {
         _textController.text = text;
+        final err = OwnerLiveSyncService.lastChatError;
+        final errorText = (err != null && err.isNotEmpty)
+            ? 'تعذر إرسال الرسالة حالياً ($err)، يرجى التحقق من جودة الاتصال وإعادة المحاولة'
+            : 'تعذر إرسال الرسالة حالياً، يرجى التحقق من جودة الاتصال وإعادة المحاولة';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر إرسال الرسالة حالياً، يرجى التحقق من جودة الاتصال وإعادة المحاولة'),
+          SnackBar(
+            content: Text(errorText),
             backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -145,7 +153,10 @@ class _DesktopLiveChatScreenState extends State<DesktopLiveChatScreen> with Sing
             IconButton(
               icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
               tooltip: 'تحديث المحادثة',
-              onPressed: () => setState(() {}),
+              onPressed: () {
+                OwnerLiveSyncService.fetchChatMessages();
+                setState(() {});
+              },
             ),
           ],
         ),

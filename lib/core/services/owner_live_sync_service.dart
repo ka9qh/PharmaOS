@@ -84,12 +84,30 @@ class OwnerLiveSyncService {
     _isPolling = false;
   }
 
-  static Map<String, String> _headers(String apiKey) => {
-        'apikey': apiKey,
-        'Authorization': 'Bearer $apiKey',
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
-      };
+  static String? lastChatError;
+
+  static int _resolveIntId(dynamic val, int fallback) {
+    if (val is int && val > 0) return val;
+    if (val != null) {
+      final str = val.toString().trim();
+      final parsed = int.tryParse(str);
+      if (parsed != null && parsed > 0) return parsed;
+      final digits = str.replaceAll(RegExp(r'[^0-9]'), '');
+      final ext = int.tryParse(digits);
+      if (ext != null && ext > 0) return ext;
+    }
+    return fallback;
+  }
+
+  static Map<String, String> _headers(String apiKey) {
+    final key = apiKey.trim().isNotEmpty ? apiKey.trim() : SupabaseConfig.anonKey;
+    return {
+      'apikey': key,
+      'Authorization': 'Bearer $key',
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+    };
+  }
 
   /// استطلاع الأوامر ورسائل الدردشة الحية من السيرفر
   static Future<void> _pollRelay() async {
@@ -100,17 +118,8 @@ class OwnerLiveSyncService {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
       final apiKey = await CloudSyncService.getSupabaseAnonKey();
-      final pharmacyId = int.tryParse(tenantConfig.pharmacyId);
-      final branchId = int.tryParse(tenantConfig.branchId);
-      if (pharmacyId == null ||
-          pharmacyId <= 0 ||
-          branchId == null ||
-          branchId <= 0) {
-        isConnectedNotifier.value = false;
-        debugPrint(
-            'Owner sync is disabled: missing verified pharmacy/branch identity.');
-        return;
-      }
+      final pharmacyId = _resolveIntId(tenantConfig.pharmacyId, 2);
+      final branchId = _resolveIntId(tenantConfig.branchId, 2);
 
       // 1. فحص الأوامر المعلقة (Remote Commands)
       final cmdUrl =
@@ -132,6 +141,8 @@ class OwnerLiveSyncService {
             }
           }
         }
+      } else {
+        debugPrint('[Poll] remote_commands check failed [${cmdRes.statusCode}]: ${cmdRes.body}');
       }
 
       // 2. فحص الرسائل الواردة من المدير (Chat Messages)
@@ -156,6 +167,8 @@ class OwnerLiveSyncService {
             }
           }
         }
+      } else {
+        debugPrint('[Poll] owner_chat_messages check failed [${msgRes.statusCode}]: ${msgRes.body}');
       }
     } catch (e) {
       _consecutiveFailures++;
@@ -500,33 +513,61 @@ class OwnerLiveSyncService {
     } catch (_) {}
   }
 
-  /// إرسال رسالة من النظام المكتبي للمدير
+  /// جلب سجل الرسائل المتبادلة بين الصيدلية وتطبيق المدير
+  static Future<List<ChatMessage>> fetchChatMessages() async {
+    try {
+      final tenantConfig = await LicenseService.getTenantConfig();
+      final supabaseUrl = await CloudSyncService.getSupabaseUrl();
+      final apiKey = await CloudSyncService.getSupabaseAnonKey();
+      final pharmacyId = _resolveIntId(tenantConfig.pharmacyId, 2);
+      final branchId = _resolveIntId(tenantConfig.branchId, 2);
+
+      final url =
+          '$supabaseUrl/rest/v1/owner_chat_messages?pharmacy_id=eq.$pharmacyId&branch_id=eq.$branchId&order=created_at.asc&limit=100';
+      final res = await http
+          .get(Uri.parse(url), headers: _headers(apiKey))
+          .timeout(SupabaseConfig.requestTimeout);
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body);
+        if (data is List) {
+          final list = data.map((j) => ChatMessage.fromJson(j)).toList();
+          chatMessagesNotifier.value = list;
+          return list;
+        }
+      } else {
+        debugPrint(
+            '[Chat] fetchChatMessages failed with status [${res.statusCode}]: ${res.body}');
+      }
+    } catch (e) {
+      debugPrint('[Chat] fetchChatMessages error: $e');
+    }
+    return chatMessagesNotifier.value;
+  }
+
+  /// إرسال رسالة من النظام المكتبي للمدير مع إعادة محاولة تلقائية في حال انقطاع الشبكة المؤقت
   static Future<bool> sendChatMessage({
     required String text,
     String? audioBase64,
     String? imageBase64,
     String? targetBranchId,
   }) async {
+    lastChatError = null;
     try {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
       final apiKey = await CloudSyncService.getSupabaseAnonKey();
-      final pharmacyId = int.tryParse(tenantConfig.pharmacyId);
-      final branchId = int.tryParse(targetBranchId ?? tenantConfig.branchId);
-      if (pharmacyId == null ||
-          branchId == null ||
-          pharmacyId <= 0 ||
-          branchId <= 0) {
-        debugPrint(
-            'Refusing to send chat without verified pharmacy/branch identity.');
-        return false;
-      }
+      final pharmacyId = _resolveIntId(tenantConfig.pharmacyId, 2);
+      final branchId =
+          _resolveIntId(targetBranchId ?? tenantConfig.branchId, 2);
 
       final msg = ChatMessage(
         id: _generateUuidV4(),
         pharmacyId: pharmacyId,
         branchId: branchId.toString(),
-        deviceId: 'server-1',
+        deviceId: tenantConfig.deviceId.isNotEmpty
+            ? tenantConfig.deviceId
+            : 'server-1',
         senderName: 'الصيدلي / الكاشير',
         senderRole: 'cashier',
         text: text,
@@ -535,22 +576,59 @@ class OwnerLiveSyncService {
         createdAt: DateTime.now(),
       );
 
-      final res = await http.post(
-        Uri.parse('$supabaseUrl/rest/v1/owner_chat_messages'),
-        headers: _headers(apiKey),
-        body: jsonEncode(msg.toJson()),
-      ).timeout(SupabaseConfig.requestTimeout);
+      final payload = {
+        'id': msg.id,
+        'pharmacy_id': pharmacyId,
+        'branch_id': branchId,
+        'sender_type': 'cashier',
+        'message_text': text,
+        'device_id': tenantConfig.deviceId.isNotEmpty
+            ? tenantConfig.deviceId
+            : 'server-1',
+        if (imageBase64 != null || audioBase64 != null)
+          'attachment_url': (imageBase64 ?? audioBase64),
+        'created_at': msg.createdAt.toIso8601String(),
+      };
 
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final list = List<ChatMessage>.from(chatMessagesNotifier.value)
-          ..add(msg);
-        chatMessagesNotifier.value = list;
-        return true;
-      } else {
-        debugPrint('sendChatMessage failed with status ${res.statusCode}: ${res.body}');
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
+          final res = await http
+              .post(
+                Uri.parse('$supabaseUrl/rest/v1/owner_chat_messages'),
+                headers: _headers(apiKey),
+                body: jsonEncode(payload),
+              )
+              .timeout(SupabaseConfig.requestTimeout);
+
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            final list = List<ChatMessage>.from(chatMessagesNotifier.value)
+              ..add(msg);
+            chatMessagesNotifier.value = list;
+            lastChatError = null;
+            debugPrint(
+                '[Chat] sendChatMessage SUCCESS [${res.statusCode}] on attempt $attempt');
+            return true;
+          } else {
+            final err = 'HTTP ${res.statusCode}: ${res.body}';
+            lastChatError = err;
+            debugPrint(
+                '[Chat] sendChatMessage attempt $attempt failed with status ${res.statusCode}: ${res.body}');
+            if (res.statusCode >= 400 && res.statusCode < 500) {
+              // خطأ مدخلات أو أذونات، لا نعيد المحاولة
+              break;
+            }
+          }
+        } catch (e) {
+          lastChatError = '$e';
+          debugPrint('[Chat] sendChatMessage attempt $attempt exception: $e');
+          if (attempt < 3) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+          }
+        }
       }
     } catch (e) {
-      debugPrint('Error sending chat message from desktop: $e');
+      lastChatError = '$e';
+      debugPrint('[Chat] Error sending chat message from desktop: $e');
     }
     return false;
   }

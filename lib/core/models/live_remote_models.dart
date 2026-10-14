@@ -121,11 +121,12 @@ class ChatMessage {
   Map<String, dynamic> toJson() => {
         'id': id,
         'pharmacy_id': pharmacyId,
-        'branch_id': branchId != null ? int.tryParse(branchId!) : null,
+        'branch_id': branchId != null ? (int.tryParse(branchId!) ?? 2) : 2,
         'sender_type': senderRole == 'owner' ? 'owner' : 'cashier',
         'message_text': text,
         'sender_name': senderName,
         'sender_role': senderRole,
+        if (deviceId != null && deviceId!.isNotEmpty) 'device_id': deviceId,
         'attachment_url': imageUrl ?? imageBase64 ?? audioBase64,
         'created_at': createdAt.toIso8601String(),
       };

@@ -94,10 +94,14 @@ class TenantConfig {
 
   factory TenantConfig.fromMap(Map<String, dynamic> map) {
     return TenantConfig(
-      pharmacyId: map['pharmacyId'] ?? 'PHARM-LOCAL-01',
+      pharmacyId: (map['pharmacyId'] != null && map['pharmacyId'].toString().trim().isNotEmpty && map['pharmacyId'] != 'PHARM-LOCAL-01')
+          ? map['pharmacyId'].toString()
+          : '2',
       pharmacyName: map['pharmacyName'] ?? 'صيدلية نموذجية',
       licenseKey: map['licenseKey'] ?? 'PHARMAOS-COMMERCIAL-LIFETIME',
-      branchId: map['branchId'] ?? 'main',
+      branchId: (map['branchId'] != null && map['branchId'].toString().trim().isNotEmpty && map['branchId'] != 'main')
+          ? map['branchId'].toString()
+          : '2',
       branchName: map['branchName'] ?? 'الفرع الرئيسي',
       deviceId: map['deviceId'] ?? 'POS-01',
       isCloudSyncEnabled: map['isCloudSyncEnabled'] ?? false,

@@ -21,6 +21,15 @@ class LicenseService {
     if (jsonStr != null && jsonStr.isNotEmpty) {
       try {
         _cachedConfig = TenantConfig.fromJson(jsonStr);
+        final pId = int.tryParse(_cachedConfig!.pharmacyId);
+        final bId = int.tryParse(_cachedConfig!.branchId);
+        if (pId == null || pId <= 0 || bId == null || bId <= 0) {
+          _cachedConfig = _cachedConfig!.copyWith(
+            pharmacyId: (pId != null && pId > 0) ? pId.toString() : '2',
+            branchId: (bId != null && bId > 0) ? bId.toString() : '2',
+          );
+          await saveTenantConfig(_cachedConfig!);
+        }
         return _cachedConfig!;
       } catch (_) {}
     }
