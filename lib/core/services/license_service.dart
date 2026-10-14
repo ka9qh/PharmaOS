@@ -164,7 +164,7 @@ class LicenseService {
             'apikey': key,
             'Authorization': 'Bearer $key',
           },
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(const Duration(seconds: 25));
         
         if (bRes.statusCode == 200) {
           final bData = json.decode(bRes.body) as List;

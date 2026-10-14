@@ -65,7 +65,7 @@ class AppUpdaterService {
     try {
       final response = await http
           .get(Uri.parse(manifestUrl))
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 25));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));

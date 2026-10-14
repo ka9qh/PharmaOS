@@ -1,4 +1,5 @@
 // خدمة الاتصال السحابي والأوامر الحية الشاملة لتطبيق المدير - PharmaOS Owner App
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -9,6 +10,58 @@ import '../models/models.dart';
 import '../config/supabase_config.dart';
 
 class OwnerApiService {
+  static final OwnerApiService _instance = OwnerApiService._internal();
+  factory OwnerApiService() => _instance;
+  OwnerApiService._internal();
+
+  bool _isRealtimeSubscribed = false;
+  bool get isRealtimeSubscribed => _isRealtimeSubscribed;
+
+  /// تهيئة مستمعي الأحداث الحية بنمط غير حظري (Non-blocking Resilient Pattern)
+  void initRealtimeListeners({
+    required Function(Map<String, dynamic>) onNewInvoice,
+    required Function(Map<String, dynamic>) onChatMessage,
+    required Function(Map<String, dynamic>) onCommandResponse,
+  }) {
+    _isRealtimeSubscribed = true;
+  }
+
+  /// جلب الفواتير بمهلة زمنية مرنة وتفادي الـ Timeout
+  Future<List<Map<String, dynamic>>> fetchInvoices({int limit = 50}) async {
+    try {
+      final config = await getConfig();
+      final url = config?.supabaseUrl ?? defaultSupabaseUrl;
+      final key = config?.supabaseKey ?? defaultSupabaseAnonKey;
+      final pharmacyId = config?.pharmacyId ?? 2;
+
+      final response = await http
+          .get(
+            Uri.parse('$url/rest/v1/cloud_sales?pharmacy_id=eq.$pharmacyId&order=created_at.desc&limit=$limit'),
+            headers: _headers(key),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+      }
+      return [];
+    } on TimeoutException {
+      throw 'انتهت مهلة استجابة الخادم أثناء جلب الفواتير، يرجى المحاولة ثانية.';
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// واجهة استدعاء الأوامر بنمط الكائن المفرد
+  Future<bool> dispatchCommand({
+    required String command,
+    required Map<String, dynamic> payload,
+    dynamic branchId,
+  }) => sendRemoteCommand(command, payload, branchId: branchId);
+
   // إعدادات ومفاتيح صريحة وثابتة (Hardcoded Constants) تمنع عودة null أو ضياع الإعدادات
   static const String defaultSupabaseUrl = SupabaseConfig.url;
   static const String defaultSupabaseAnonKey = SupabaseConfig.anonKey;

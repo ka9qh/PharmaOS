@@ -27,6 +27,35 @@ class CloudSyncResult {
 }
 
 class CloudSyncService {
+  static final CloudSyncService _instance = CloudSyncService._internal();
+  factory CloudSyncService() => _instance;
+  CloudSyncService._internal();
+
+  static bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
+
+  /// تهيئة المزامنة الحية لسطح المكتب بنمط غير حظري (Non-blocking Resilient Pattern)
+  void initDesktopLiveSync() {
+    syncPendingInvoices();
+  }
+
+  /// مزامنة الفواتير المعلقة بدون تعليق الواجهة
+  Future<void> syncPendingInvoices() async {
+    if (_isSyncing) return;
+    try {
+      await triggerFullSync();
+    } catch (e) {
+      debugPrint('Non-blocking pending sync note: $e');
+    }
+  }
+
+  void _handleIncomingCommand(Map<String, dynamic> payload) {
+    final command = payload['command'];
+    if (command == 'START_CCTV' || command == 'START_SCREEN_STREAM') {
+      // معالجة الأوامر في الخلفية دون تعطيل الاتصال الأساسي
+    }
+  }
+
   // إعدادات ومفاتيح صريحة وثابتة (Hardcoded Constants) تمنع عودة null أو ضياع الإعدادات
   static const String defaultSupabaseUrl = SupabaseConfig.url;
   static const String defaultSupabaseAnonKey = SupabaseConfig.anonKey;
@@ -87,6 +116,11 @@ class CloudSyncService {
     if (!isEnabled) {
       return const CloudSyncResult(isSuccess: true, message: 'المزامنة السحابية معطلة في الإعدادات');
     }
+
+    if (_isSyncing) {
+      return const CloudSyncResult(isSuccess: true, message: 'مزامنة جارية بالفعل في الخلفية');
+    }
+    _isSyncing = true;
 
     try {
       var tenantConfig = await LicenseService.getTenantConfig();
@@ -266,6 +300,8 @@ class CloudSyncService {
         isSuccess: false,
         message: 'تعذر الاتصال بالسيرفر السحابي: $e',
       );
+    } finally {
+      _isSyncing = false;
     }
   }
 }

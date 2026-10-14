@@ -286,7 +286,7 @@ class MultiDestinationBackupService {
                 'Content-Type': 'application/octet-stream',
               },
               body: bytes,
-            ).timeout(const Duration(seconds: 8));
+            ).timeout(const Duration(seconds: 35));
 
             if (storageRes.statusCode == 200 || storageRes.statusCode == 409) {
               final recordRes = await http.post(
@@ -345,9 +345,9 @@ class MultiDestinationBackupService {
           }
         }());
 
-        // انتظار انتهاء المهام السحابية بحد أقصى 8 ثوانٍ
+        // انتظار انتهاء المهام السحابية بحد أقصى 35 ثانية
         await Future.wait(cloudFutures).timeout(
-          const Duration(seconds: 8),
+          const Duration(seconds: 35),
           onTimeout: () => [],
         );
       } catch (e) {
