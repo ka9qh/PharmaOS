@@ -1,6 +1,7 @@
 // شاشة إدارة الوصفات الطبية وملفات المرضى - PharmaOS
 // تدعم: البحث الفوري، إضافة وتعديل وحذف الوصفات، زر الرجوع، ربط المريض والطبيب والتشخيص
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,9 @@ import 'package:drift/drift.dart' as drift;
 
 import '../providers/prescriptions_provider.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/services/tele_pharmacy_service.dart';
+import '../../../../core/services/license_service.dart';
+import 'tele_consultation_dialog.dart';
 import '../../../doctors/presentation/providers/doctors_provider.dart';
 import '../../../customers/presentation/providers/customers_provider.dart';
 import '../../../customers/domain/entities/customers_entity.dart';
@@ -305,6 +309,40 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
     );
   }
 
+  void _sendPrescriptionToManager(PrescriptionRow pre, String customerName, String? doctorName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🚀 جاري إرسال الوصفة للمدير في الخلفية...'),
+        backgroundColor: Colors.teal,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    unawaited(() async {
+      try {
+        final tenant = await LicenseService.getTenantConfig();
+        await TelePharmacyService.sendConsultation(
+          title: 'وصفة طبية: ${pre.diagnosis ?? "روشتة"} ${pre.prescriptionNumber != null ? "(#${pre.prescriptionNumber})" : ""}',
+          patientName: customerName,
+          notes: 'الطبيب: ${doctorName ?? "غير محدد"}\nالأدوية: ${pre.notes ?? "لا توجد ملاحظات"}',
+          urgency: 'normal',
+          pharmacistName: 'الصيدلي (${tenant.pharmacyName})',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ تم تسليم الوصفة لتطبيق المدير بنجاح!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error sending prescription to manager: $e');
+      }
+    }());
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(prescriptionsProvider);
@@ -337,6 +375,16 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
             ],
           ),
           actions: [
+            FilledButton.tonalIcon(
+              onPressed: () => TeleConsultationDialog.show(context),
+              icon: const Icon(Icons.wifi_channel_rounded, color: Color(0xFF6366F1), size: 18),
+              label: const Text('استشارة / روشتة سحابية', style: TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+            const SizedBox(width: 8),
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'تحديث القائمة',
@@ -565,6 +613,11 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.send_to_mobile, color: Colors.teal),
+                                    tooltip: 'إرسال للمدير للمراجعة السحابية',
+                                    onPressed: () => _sendPrescriptionToManager(pre, customerName, doctor?.name),
+                                  ),
                                   IconButton(
                                     icon: const Icon(Icons.edit, color: Colors.blue),
                                     tooltip: 'تعديل',

@@ -57,17 +57,21 @@ class _DashboardTabState extends State<DashboardTab> {
       final closings = await OwnerApiService.fetchDayClosings(limit: 15);
 
       double total = 0;
+      double cashTotal = 0;
       int count = 0;
       final now = DateTime.now();
 
       for (var s in sales) {
         if (s.createdAt.year == now.year && s.createdAt.month == now.month && s.createdAt.day == now.day) {
           total += s.netAmount;
+          if (s.paymentMethod == 'نقدي') {
+            cashTotal += s.netAmount;
+          }
           count++;
         }
       }
 
-      double drawer = closings.isNotEmpty ? closings.first.cashInDrawer : (total * 0.85);
+      double drawer = closings.isNotEmpty ? closings.first.cashInDrawer : cashTotal;
 
       if (mounted) {
         setState(() {

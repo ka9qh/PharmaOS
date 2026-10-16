@@ -91,7 +91,24 @@ class _CustomerLedgerScreenState extends ConsumerState<CustomerLedgerScreen> {
       ),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : state.errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
+                      const SizedBox(height: 12),
+                      Text(state.errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 14)),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('إعادة المحاولة'),
+                        onPressed: () => ref.read(customerLedgerNotifierProvider.notifier).loadLedger(widget.customer.id),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
               children: [
                 Container(
                   padding: const EdgeInsets.all(16.0),

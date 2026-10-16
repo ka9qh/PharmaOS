@@ -7,6 +7,26 @@ class WalletsDataSource {
   WalletsDataSource(this.db);
 
   Future<List<WalletRow>> getAll() async {
+    final existing = await db.select(db.wallets).get();
+    if (existing.isNotEmpty) {
+      return existing;
+    }
+
+    // Auto-seed popular Yemeni e-wallets if empty
+    final defaultWallets = [
+      'بنك الكريمي',
+      'محفظة جوالي',
+      'محفظة ون كاش',
+      'محفظة فلوسك',
+      'كاش موبايل',
+    ];
+
+    for (final name in defaultWallets) {
+      try {
+        await db.into(db.wallets).insert(WalletsCompanion.insert(name: name));
+      } catch (_) {}
+    }
+
     return await db.select(db.wallets).get();
   }
 

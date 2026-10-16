@@ -12,6 +12,11 @@ abstract class SalesRepository {
     int? customerId,
     int? doctorId,
     int? prescriptionId,
+    int? walletId,
+    String? walletName,
+    String? referenceNumber,
+    double? amountPaid,
+    double? changeAmount,
   });
 
   /// إجمالي مبيعات اليوم الحالي - يُستخدم كمؤشر سريع في شاشة نقطة البيع

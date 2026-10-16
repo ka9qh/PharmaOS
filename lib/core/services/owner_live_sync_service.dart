@@ -30,6 +30,8 @@ class OwnerLiveSyncService {
 
   static bool isScreenStreamingActive = false;
   static bool isCameraStreamingActive = false;
+  static bool _isScreenFrameInProgress = false;
+  static bool _isCameraFrameInProgress = false;
   static bool _isPolling = false;
   static int _consecutiveFailures = 0;
 
@@ -694,6 +696,14 @@ class OwnerLiveSyncService {
 
   /// التقاط إطار وبثه سحابياً للمدير
   static Future<void> _captureAndBroadcastFrame(String channel) async {
+    if (channel == 'screen') {
+      if (_isScreenFrameInProgress) return;
+      _isScreenFrameInProgress = true;
+    } else {
+      if (_isCameraFrameInProgress) return;
+      _isCameraFrameInProgress = true;
+    }
+
     try {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
@@ -706,7 +716,7 @@ class OwnerLiveSyncService {
         final boundary = ScreenshotService.globalBoundaryKey.currentContext
             ?.findRenderObject() as RenderRepaintBoundary?;
         if (boundary != null) {
-          final ui.Image image = await boundary.toImage(pixelRatio: 0.8);
+          final ui.Image image = await boundary.toImage(pixelRatio: 0.5);
           final ByteData? byteData =
               await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
@@ -759,10 +769,16 @@ class OwnerLiveSyncService {
               },
               body: jsonEncode(frame.toJson()),
             )
-            .timeout(const Duration(seconds: 25));
+            .timeout(const Duration(seconds: 5));
       }
     } catch (e) {
       debugPrint('Error in _captureAndBroadcastFrame ($channel): $e');
+    } finally {
+      if (channel == 'screen') {
+        _isScreenFrameInProgress = false;
+      } else {
+        _isCameraFrameInProgress = false;
+      }
     }
   }
 

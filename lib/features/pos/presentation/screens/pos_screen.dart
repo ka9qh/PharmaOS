@@ -15,9 +15,11 @@ import '../widgets/pos_returns_dialog.dart';
 import '../widgets/bind_unrecognized_barcode_dialog.dart';
 import '../widgets/clinical_interaction_banner.dart';
 import '../widgets/smart_alternatives_dialog.dart';
+import '../widgets/cash_drawer_breakdown_dialog.dart';
 import '../../../customers/presentation/providers/customers_provider.dart';
 import '../../../wallets/presentation/providers/wallets_provider.dart';
 import '../../../wallets/domain/entities/wallet_entity.dart';
+import '../../../wallets/presentation/widgets/wallets_management_widget.dart';
 import '../../../../core/di/service_locator.dart';
 import '../../../medicines/domain/repositories/medicines_repository.dart';
 import '../../../medicines/domain/entities/medicines_entity.dart';
@@ -50,6 +52,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   final _barcodeFocusNode = FocusNode();
   final _discountController = TextEditingController(text: '0');
   final _amountReceivedController = TextEditingController();
+  final _referenceNumberController = TextEditingController();
   String? _discountError;
   int? _selectedWalletId;
 
@@ -97,6 +100,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     _barcodeFocusNode.dispose();
     _discountController.dispose();
     _amountReceivedController.dispose();
+    _referenceNumberController.dispose();
     super.dispose();
   }
 
@@ -675,6 +679,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       );
       _discountController.text = '0';
       _amountReceivedController.clear();
+      _referenceNumberController.clear();
       _barcodeFocusNode.requestFocus();
     }
   }
@@ -756,16 +761,30 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               ),
             ),
             const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.blue.shade200),
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => CashDrawerBreakdownDialog.show(
+                context,
+                onRefresh: () => ref.read(posNotifierProvider.notifier).refreshStats(),
               ),
-              child: Text(
-                'درج الصيدلية: ${state.cashInDrawerTotal.toStringAsFixed(0)} ر.ي',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.blue.shade300),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.point_of_sale, size: 14, color: Color(0xFF0284C7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'درج الصيدلية: ${state.cashInDrawerTotal.toStringAsFixed(0)} ر.ي 🔍',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 6),
@@ -1123,18 +1142,25 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
           ),
           Container(
-            width: 260,
-            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-            decoration: BoxDecoration(border: headerBorder),
+            width: 240,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: const BoxDecoration(border: headerBorder),
             alignment: Alignment.centerRight,
-            child: Text('اسم الدواء والتركيب', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+            child: const Text('اسم الدواء والتركيب', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
           ),
           Container(
-            width: 130,
-            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-            decoration: BoxDecoration(border: headerBorder),
+            width: 120,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: const BoxDecoration(border: headerBorder),
             alignment: Alignment.center,
-            child: Text('المورد / الوكيل', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE2E8F0), fontSize: 12)),
+            child: const Text('الشركة المصنعة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFBAE6FD), fontSize: 12)),
+          ),
+          Container(
+            width: 110,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: const BoxDecoration(border: headerBorder),
+            alignment: Alignment.center,
+            child: const Text('المورد / الوكيل', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE2E8F0), fontSize: 12)),
           ),
           Container(
             width: 100,
@@ -1401,36 +1427,47 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
             // القسم 2: طريقة الدفع والتفاصيل
             Expanded(
-              flex: 4,
+              flex: 5,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Row(
                     children: [
-                      const Text('طريقة الدفع: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF475569))),
+                      const Text('طريقة الدفع: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF334155))),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.payments_outlined, size: 15),
+                        label: const Text('نقدي', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        selected: state.paymentMethod == 'نقدي',
+                        selectedColor: const Color(0xFFDCFCE7),
+                        onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('نقدي'),
+                      ),
                       const SizedBox(width: 6),
                       ChoiceChip(
                         visualDensity: VisualDensity.compact,
-                        avatar: const Icon(Icons.payments_outlined, size: 14),
-                        label: const Text('نقدي', style: TextStyle(fontSize: 11)),
-                        selected: state.paymentMethod == 'نقدي',
-                        onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('نقدي'),
-                      ),
-                      const SizedBox(width: 4),
-                      ChoiceChip(
-                        visualDensity: VisualDensity.compact,
-                        avatar: const Icon(Icons.account_balance_wallet_outlined, size: 14),
-                        label: const Text('محفظة', style: TextStyle(fontSize: 11)),
+                        avatar: const Icon(Icons.account_balance_wallet_outlined, size: 15),
+                        label: const Text('محفظة إلكترونية', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         selected: state.paymentMethod == 'محفظة',
-                        onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('محفظة'),
+                        selectedColor: const Color(0xFFE0E7FF),
+                        onSelected: (_) {
+                          ref.read(posNotifierProvider.notifier).setPaymentMethod('محفظة');
+                          final wallets = ref.read(walletsNotifierProvider).value;
+                          if (wallets != null && wallets.isNotEmpty) {
+                            final w = wallets.firstWhere((element) => element.id == _selectedWalletId, orElse: () => wallets.first);
+                            _selectedWalletId = w.id;
+                            ref.read(posNotifierProvider.notifier).setWalletInfo(walletId: w.id, walletName: w.name);
+                          }
+                        },
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       ChoiceChip(
                         visualDensity: VisualDensity.compact,
-                        avatar: const Icon(Icons.person_outline, size: 14),
-                        label: const Text('آجل', style: TextStyle(fontSize: 11)),
+                        avatar: const Icon(Icons.person_outline, size: 15),
+                        label: const Text('آجل (دين)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         selected: state.paymentMethod == 'آجل',
+                        selectedColor: const Color(0xFFFEF3C7),
                         onSelected: (_) => ref.read(posNotifierProvider.notifier).setPaymentMethod('آجل'),
                       ),
                     ],
@@ -1438,20 +1475,147 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   const SizedBox(height: 6),
                   if (state.paymentMethod == 'محفظة')
                     walletsAsync.when(
-                      data: (wallets) => SizedBox(
-                        height: 36,
-                        child: DropdownButtonFormField<int>(
-                          decoration: InputDecoration(
-                            labelText: 'اختر المحفظة',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                          value: _selectedWalletId ?? (wallets.isNotEmpty ? wallets.first.id : null),
-                          items: wallets.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name, style: const TextStyle(fontSize: 12)))).toList(),
-                          onChanged: (val) => setState(() => _selectedWalletId = val),
-                        ),
-                      ),
+                      data: (wallets) {
+                        if (wallets.isEmpty) {
+                          return Row(
+                            children: [
+                              const Text('لا توجد محافظ إلكترونية مضافة', style: TextStyle(fontSize: 11, color: Colors.orange)),
+                              const SizedBox(width: 8),
+                              TextButton.icon(
+                                onPressed: () => WalletsManagementWidget.show(context),
+                                icon: const Icon(Icons.add_circle_outline, size: 15),
+                                label: const Text('إضافة محفظة الآن', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          );
+                        }
+                        if (state.walletId == null && wallets.isNotEmpty) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            _selectedWalletId = wallets.first.id;
+                            ref.read(posNotifierProvider.notifier).setWalletInfo(
+                              walletId: wallets.first.id,
+                              walletName: wallets.first.name,
+                            );
+                          });
+                        }
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: SizedBox(
+                                    height: 38,
+                                    child: DropdownButtonFormField<int>(
+                                      decoration: InputDecoration(
+                                        labelText: 'المحفظة / الحساب البنكي',
+                                        isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      value: state.walletId ?? _selectedWalletId ?? (wallets.isNotEmpty ? wallets.first.id : null),
+                                      items: wallets
+                                          .map((w) => DropdownMenuItem(
+                                                value: w.id,
+                                                child: Text(w.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                              ))
+                                          .toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setState(() => _selectedWalletId = val);
+                                          final selectedW = wallets.firstWhere((w) => w.id == val);
+                                          ref.read(posNotifierProvider.notifier).setWalletInfo(
+                                                walletId: selectedW.id,
+                                                walletName: selectedW.name,
+                                              );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.settings_outlined, size: 18, color: Color(0xFF64748B)),
+                                  tooltip: 'إدارة وتعديل المحافظ',
+                                  onPressed: () => WalletsManagementWidget.show(context),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: SizedBox(
+                                    height: 36,
+                                    child: TextField(
+                                      controller: _referenceNumberController,
+                                      style: const TextStyle(fontSize: 11),
+                                      decoration: InputDecoration(
+                                        labelText: 'رقم الإشعار / الحوالة',
+                                        isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onChanged: (val) => ref.read(posNotifierProvider.notifier).setWalletInfo(walletReference: val),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  flex: 2,
+                                  child: SizedBox(
+                                    height: 36,
+                                    child: TextField(
+                                      controller: _amountReceivedController,
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                      decoration: InputDecoration(
+                                        labelText: 'المبلغ المقبوض',
+                                        isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        suffixText: 'ر.ي',
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onChanged: (value) => ref
+                                          .read(posNotifierProvider.notifier)
+                                          .setAmountReceived(double.tryParse(value) ?? 0),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                ActionChip(
+                                  visualDensity: VisualDensity.compact,
+                                  label: const Text('كامل', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                  onPressed: () {
+                                    _amountReceivedController.text = state.total.toStringAsFixed(0);
+                                    ref.read(posNotifierProvider.notifier).setAmountReceived(state.total);
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                if (_amountReceivedController.text.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: state.changeOwed >= 0 ? Colors.green.shade50 : Colors.amber.shade50,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: state.changeOwed >= 0 ? Colors.green.shade200 : Colors.amber.shade200),
+                                    ),
+                                    child: Text(
+                                      state.changeOwed >= 0 ? 'مسدد بالكامل' : 'ناقص: ${(-state.changeOwed).toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: state.changeOwed >= 0 ? Colors.green.shade800 : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
                       loading: () => const LinearProgressIndicator(),
                       error: (_, __) => const Text('تعذر تحميل المحافظ', style: TextStyle(fontSize: 11, color: Colors.red)),
                     )
@@ -1463,17 +1627,17 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                           children: [
                             Expanded(
                               child: SizedBox(
-                                height: 36,
+                                height: 38,
                                 child: DropdownButtonFormField<int>(
                                   value: state.selectedCustomerId,
                                   hint: const Text('اختر العميل المدين', style: TextStyle(fontSize: 11)),
                                   decoration: InputDecoration(
-                                    labelText: 'العميل المدين',
+                                    labelText: 'العميل المدين (تسجيل آجل)',
                                     isDense: true,
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
                                   ),
-                                  items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name, style: const TextStyle(fontSize: 12)))).toList(),
+                                  items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)))).toList(),
                                   onChanged: (value) {
                                     if (value == null) return;
                                     final name = customers.firstWhere((c) => c.id == value).name;
@@ -1485,7 +1649,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             const SizedBox(width: 4),
                             IconButton(
                               icon: const Icon(Icons.person_add, size: 20, color: Colors.blue),
-                              tooltip: 'إضافة عميل جديد',
+                              tooltip: 'إضافة عميل جديد فورياً',
                               onPressed: _showAddNewCustomerDialog,
                             ),
                           ],
@@ -1497,11 +1661,11 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                       children: [
                         SizedBox(
                           width: 140,
-                          height: 36,
+                          height: 38,
                           child: TextField(
                             controller: _amountReceivedController,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            style: const TextStyle(fontSize: 12),
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                             decoration: InputDecoration(
                               labelText: 'المستلم من العميل',
                               isDense: true,
@@ -1514,10 +1678,19 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                                 .setAmountReceived(double.tryParse(value) ?? 0),
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        ActionChip(
+                          visualDensity: VisualDensity.compact,
+                          label: const Text('المبلغ كامل', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            _amountReceivedController.text = state.total.toStringAsFixed(0);
+                            ref.read(posNotifierProvider.notifier).setAmountReceived(state.total);
+                          },
+                        ),
                         const SizedBox(width: 8),
                         if (_amountReceivedController.text.isNotEmpty)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                             decoration: BoxDecoration(
                               color: state.changeOwed >= 0 ? Colors.green.shade50 : Colors.red.shade50,
                               borderRadius: BorderRadius.circular(6),
@@ -1525,8 +1698,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                             ),
                             child: Text(
                               state.changeOwed >= 0
-                                  ? 'الباقي: ${state.changeOwed.toStringAsFixed(0)} ر.ي'
-                                  : 'ناقص: ${(-state.changeOwed).toStringAsFixed(0)} ر.ي',
+                                  ? 'الباقي للعميل: ${state.changeOwed.toStringAsFixed(0)} ر.ي'
+                                  : 'المتبقي: ${(-state.changeOwed).toStringAsFixed(0)} ر.ي',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,

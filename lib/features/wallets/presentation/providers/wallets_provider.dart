@@ -33,6 +33,7 @@ class WalletsNotifier extends StateNotifier<AsyncValue<List<WalletEntity>>> {
     try {
       final newWallet = await repository.create(name);
       state = state.whenData((wallets) => [...wallets, newWallet]);
+      await loadWallets();
     } catch (e) {
       rethrow;
     }
@@ -44,6 +45,7 @@ class WalletsNotifier extends StateNotifier<AsyncValue<List<WalletEntity>>> {
       state = state.whenData((wallets) {
         return wallets.map((w) => w.id == id ? updatedWallet : w).toList();
       });
+      await loadWallets();
     } catch (e) {
       rethrow;
     }
@@ -55,6 +57,7 @@ class WalletsNotifier extends StateNotifier<AsyncValue<List<WalletEntity>>> {
       state = state.whenData((wallets) {
         return wallets.where((w) => w.id != id).toList();
       });
+      await loadWallets();
     } catch (e) {
       rethrow;
     }

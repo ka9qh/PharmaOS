@@ -23,6 +23,11 @@ abstract class SalesDataSource {
     int? customerId,
     int? doctorId,
     int? prescriptionId,
+    int? walletId,
+    String? walletName,
+    String? referenceNumber,
+    double? amountPaid,
+    double? changeAmount,
   });
 
   Future<double> getTodaySalesTotal();
@@ -70,6 +75,11 @@ class SalesDataSourceImpl implements SalesDataSource {
     int? customerId,
     int? doctorId,
     int? prescriptionId,
+    int? walletId,
+    String? walletName,
+    String? referenceNumber,
+    double? amountPaid,
+    double? changeAmount,
   }) async {
     if (items.isEmpty) {
       throw const FormatException('لا يمكن إنشاء فاتورة بيع فارغة بدون أصناف.');
@@ -121,6 +131,7 @@ class SalesDataSourceImpl implements SalesDataSource {
               totalAmount: totalAmount,
               discount: Value(finalDiscount),
               paymentMethod: Value(paymentMethod),
+              walletId: Value(walletId),
               doctorId: Value(doctorId),
               prescriptionId: Value(prescriptionId),
             ),
@@ -227,6 +238,7 @@ class SalesDataSourceImpl implements SalesDataSource {
     try {
       final cashAccId = await _glRepo.getAccountIdByCode('1101');
       final arAccId = await _glRepo.getAccountIdByCode('1103');
+      final bankAccId = await _glRepo.getAccountIdByCode('1102') ?? cashAccId;
       final cogsAccId = await _glRepo.getAccountIdByCode('5101');
       final revAccId = await _glRepo.getAccountIdByCode('4101');
       final inventoryAccId = await _glRepo.getAccountIdByCode('1102');
@@ -235,16 +247,23 @@ class SalesDataSourceImpl implements SalesDataSource {
         final List<JournalEntryLineEntity> lines = [];
         
         final isCredit = paymentMethod == 'آجل';
-        final receivableAccId = isCredit ? arAccId : cashAccId;
+        final isWallet = paymentMethod == 'محفظة';
+        final receivableAccId = isCredit
+            ? arAccId
+            : (isWallet ? (bankAccId ?? cashAccId) : cashAccId);
 
-        // 1. من حـ / الصندوق أو العملاء (مدين) بإجمالي الفاتورة الصافي
+        final paymentDesc = isWallet
+            ? 'مبيعات محفظة (${walletName ?? "إلكترونية"}) - إشعار: ${referenceNumber ?? "بدون"} - الفاتورة ${saleResult.invoiceNumber}'
+            : (isCredit ? 'مبيعات آجل - الفاتورة ${saleResult.invoiceNumber}' : 'مبيعات نقدية - الفاتورة ${saleResult.invoiceNumber}');
+
+        // 1. من حـ / الصندوق أو المحفظة البنكية أو العملاء (مدين) بإجمالي الفاتورة الصافي
         lines.add(JournalEntryLineEntity(
           id: 0, journalEntryId: 0,
           accountId: receivableAccId,
           accountName: '',
           debit: saleResult.totalAmount,
           credit: 0,
-          description: 'مبيعات الفاتورة ${saleResult.invoiceNumber}',
+          description: paymentDesc,
         ));
         
         // 2. إلى حـ / إيرادات المبيعات (دائن) بإجمالي الفاتورة الصافي

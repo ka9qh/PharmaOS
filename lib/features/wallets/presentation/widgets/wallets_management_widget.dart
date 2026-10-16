@@ -5,6 +5,19 @@ import '../providers/wallets_provider.dart';
 class WalletsManagementWidget extends ConsumerStatefulWidget {
   const WalletsManagementWidget({super.key});
 
+  static Future<void> show(BuildContext context) {
+    return showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800, maxHeight: 650),
+          child: const WalletsManagementWidget(),
+        ),
+      ),
+    );
+  }
+
   @override
   ConsumerState<WalletsManagementWidget> createState() => _WalletsManagementWidgetState();
 }
@@ -119,54 +132,121 @@ class _WalletsManagementWidgetState extends ConsumerState<WalletsManagementWidge
     final controller = TextEditingController(text: isEdit ? wallet.name : '');
     final formKey = GlobalKey<FormState>();
 
+    final quickSuggestions = [
+      'بنك الكريمي',
+      'محفظة جوالي',
+      'محفظة ون كاش',
+      'محفظة فلوسك',
+      'كاش موبايل',
+      'بنك القطيبي',
+    ];
+
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: Text(isEdit ? 'تعديل محفظة' : 'إضافة محفظة جديدة'),
-          content: Form(
-            key: formKey,
-            child: TextFormField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'اسم المحفظة (مثل: جوالي، فلوسك)',
-                border: OutlineInputBorder(),
+        child: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(
+                    isEdit ? Icons.edit_note : Icons.account_balance_wallet,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(isEdit ? 'تعديل المحفظة' : 'إضافة محفظة إلكترونية جديدة'),
+                ],
               ),
-              validator: (val) {
-                if (val == null || val.trim().isEmpty) return 'يرجى إدخال اسم المحفظة';
-                return null;
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (formKey.currentState!.validate()) {
-                  final name = controller.text.trim();
-                  try {
-                    if (isEdit) {
-                      await ref.read(walletsNotifierProvider.notifier).updateWallet(wallet.id, name);
-                    } else {
-                      await ref.read(walletsNotifierProvider.notifier).addWallet(name);
+              content: SizedBox(
+                width: 440,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: controller,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          labelText: 'اسم المحفظة أو الحساب البنكي *',
+                          hintText: 'مثال: بنك الكريمي، محفظة جوالي...',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          prefixIcon: const Icon(Icons.wallet),
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return 'يرجى إدخال اسم المحفظة';
+                          return null;
+                        },
+                      ),
+                      if (!isEdit) ...[
+                        const SizedBox(height: 14),
+                        const Text(
+                          'اقتراحات سريعة للمحافظ المعتمدة:',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: quickSuggestions.map((sug) {
+                            return ActionChip(
+                              label: Text(sug, style: const TextStyle(fontSize: 11)),
+                              avatar: const Icon(Icons.add, size: 14),
+                              onPressed: () {
+                                setDialogState(() {
+                                  controller.text = sug;
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إلغاء'),
+                ),
+                FilledButton.icon(
+                  icon: const Icon(Icons.check, size: 18),
+                  label: Text(isEdit ? 'حفظ التعديل' : 'إضافة المحفظة'),
+                  onPressed: () async {
+                    if (formKey.currentState!.validate()) {
+                      final name = controller.text.trim();
+                      try {
+                        if (isEdit) {
+                          await ref.read(walletsNotifierProvider.notifier).updateWallet(wallet.id, name);
+                        } else {
+                          await ref.read(walletsNotifierProvider.notifier).addWallet(name);
+                        }
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(isEdit ? 'تم تعديل المحفظة بنجاح ✓' : 'تمت إضافة المحفظة بنجاح ✓'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('حدث خطأ: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
                     }
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  } catch (e) {
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('حدث خطأ: $e'), backgroundColor: Colors.red),
-                      );
-                    }
-                  }
-                }
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
+                  },
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

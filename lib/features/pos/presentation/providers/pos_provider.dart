@@ -28,7 +28,9 @@ class PosCartState {
   final double discount;
   final String paymentMethod;
   final int? walletId; // Null for 'نقدي' if not specified, but required for 'محفظة'
-  final double amountReceived; // المبلغ الذي أعطاه العميل نقدًا - لحساب الباقي (أو كدفعة مقدمة للآجل)
+  final String? walletName;
+  final String? walletReference;
+  final double amountReceived; // المبلغ الذي أعطاه العميل - لحساب الباقي (أو كدفعة مقدمة للآجل)
   final int? selectedCustomerId;
   final String? selectedCustomerName;
   
@@ -59,6 +61,8 @@ class PosCartState {
     this.discount = 0,
     this.paymentMethod = 'نقدي',
     this.walletId,
+    this.walletName,
+    this.walletReference,
     this.amountReceived = 0,
     this.selectedCustomerId,
     this.selectedCustomerName,
@@ -110,6 +114,8 @@ class PosCartState {
     double? discount,
     String? paymentMethod,
     int? walletId,
+    String? walletName,
+    String? walletReference,
     double? amountReceived,
     int? selectedCustomerId,
     String? selectedCustomerName,
@@ -132,12 +138,15 @@ class PosCartState {
     bool clearLastCompleted = false,
     bool clearCustomer = false,
     bool clearMedical = false,
+    bool clearWallet = false,
   }) {
     return PosCartState(
       items: items ?? this.items,
       discount: discount ?? this.discount,
       paymentMethod: paymentMethod ?? this.paymentMethod,
-      // walletId: walletId ?? this.walletId,
+      walletId: clearWallet ? null : (walletId ?? this.walletId),
+      walletName: clearWallet ? null : (walletName ?? this.walletName),
+      walletReference: clearWallet ? null : (walletReference ?? this.walletReference),
       amountReceived: amountReceived ?? this.amountReceived,
       selectedCustomerId: clearCustomer ? null : (selectedCustomerId ?? this.selectedCustomerId),
       selectedCustomerName: clearCustomer ? null : (selectedCustomerName ?? this.selectedCustomerName),
@@ -450,18 +459,29 @@ class PosNotifier extends Notifier<PosCartState> {
     state = state.copyWith(discount: value, clearError: true);
   }
 
-  void setPaymentMethod(String method, {int? walletId}) {
+  void setPaymentMethod(String method, {int? walletId, String? walletName, String? walletReference}) {
     state = state.copyWith(
       paymentMethod: method,
-      // walletId: walletId,
+      walletId: walletId,
+      walletName: walletName,
+      walletReference: walletReference,
       clearError: true,
       // عند الرجوع لـ "نقدي" أو "محفظة" لا حاجة للعميل المختار سابقًا (إلا إذا أردنا تسجيل عميل)
       clearCustomer: method != 'آجل',
+      clearWallet: method != 'محفظة',
     );
   }
 
-  /// المبلغ الذي أعطاه العميل نقدًا - يُستخدم لحساب الباقي المستحق له قبل
-  /// إتمام البيع (وليس فقط بعده)، ليعرف الكاشير كم يرجع للعميل فورًا.
+  void setWalletInfo({int? walletId, String? walletName, String? walletReference}) {
+    state = state.copyWith(
+      walletId: walletId ?? state.walletId,
+      walletName: walletName ?? state.walletName,
+      walletReference: walletReference ?? state.walletReference,
+      clearError: true,
+    );
+  }
+
+  /// المبلغ الذي أعطاه العميل نقدًا أو بالمحفظة - يُستخدم لحساب الباقي المستحق له
   void setAmountReceived(double value) {
     state = state.copyWith(amountReceived: value, clearError: true);
   }
@@ -491,16 +511,26 @@ class PosNotifier extends Notifier<PosCartState> {
       state = state.copyWith(errorMessage: 'اختر عميلاً لإتمام البيع الآجل');
       return false;
     }
-    // للبيع النقدي فقط: تأكد أن المبلغ المستلم كافٍ قبل إتمام البيع (لا معنى
-    // لباقٍ سالب). البيع الآجل لا يحتاج مبلغًا مستلمًا الآن أصلاً.
-    if (!state.isCreditSale && state.amountReceived < state.total) {
+    if (state.paymentMethod == 'محفظة') {
+      if (state.walletId == null) {
+        state = state.copyWith(errorMessage: 'يرجى اختيار المحفظة الإلكترونية لإتمام البيع');
+        return false;
+      }
+      if (state.amountReceived > 0 && state.amountReceived < state.total) {
+        state = state.copyWith(
+          errorMessage: 'المبلغ المقبوض بالمحفظة (${state.amountReceived.toStringAsFixed(0)}) أقل من الإجمالي (${state.total.toStringAsFixed(0)})',
+        );
+        return false;
+      }
+    } else if (!state.isCreditSale && state.amountReceived < state.total) {
       state = state.copyWith(
           errorMessage: 'المبلغ المستلم (${state.amountReceived.toStringAsFixed(0)}) '
               'أقل من الإجمالي (${state.total.toStringAsFixed(0)})');
       return false;
     }
 
-    final changeToReturn = state.isCreditSale ? 0.0 : state.changeOwed;
+    final double effectivePaid = state.amountReceived > 0 ? state.amountReceived : state.total;
+    final changeToReturn = state.isCreditSale ? 0.0 : (effectivePaid - state.total);
 
     state = state.copyWith(isProcessing: true, clearError: true, clearLastCompleted: true);
 
@@ -524,12 +554,15 @@ class PosNotifier extends Notifier<PosCartState> {
         items: cartInputs,
         discount: state.effectiveDiscount,
         paymentMethod: state.paymentMethod,
-        // walletId: state.walletId,
+        walletId: state.walletId,
+        walletName: state.walletName,
+        referenceNumber: state.walletReference,
+        amountPaid: effectivePaid,
+        changeAmount: changeToReturn,
         cashierId: cashierId,
-        customerId: state.isCreditSale ? state.selectedCustomerId : state.selectedCustomerId, // Phase 2: Allow attaching customer to cash sale too if selected
+        customerId: state.selectedCustomerId,
         doctorId: state.selectedDoctorId,
         prescriptionId: state.selectedPrescriptionId,
-        // // initialPayment:
       );
 
       final lastInv = sale.invoiceNumber;
@@ -541,7 +574,7 @@ class PosNotifier extends Notifier<PosCartState> {
         lastCompletedChange: changeToReturn,
         todaySalesTotal: state.todaySalesTotal + sale.totalAmount,
         todayReturnsTotal: state.todayReturnsTotal,
-        cashInDrawerTotal: state.cashInDrawerTotal + (state.isCreditSale ? 0.0 : (state.total)),
+        cashInDrawerTotal: state.cashInDrawerTotal + (state.paymentMethod == 'نقدي' ? state.total : 0.0),
       );
 
       // تحميل الأرقام الحقيقية المحدثة من قاعدة البيانات

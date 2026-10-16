@@ -49,27 +49,23 @@ class CustomerLedgerDataSource {
       ));
     }
 
-    /*
-    // 3. مرتجعات العملاء الآجلة (تنقص مديونية العميل)
-    // TODO: Returns table was refactored, need to join with Sales table to get customerId
-    var returnsQuery = _db.select(_db.returns)
-      ..where((t) => t.saleId.isNotNull());
-      
-    if (startDate != null) returnsQuery.where((t) => t.createdAt.isBiggerOrEqualValue(startDate));
-    if (endDate != null) returnsQuery.where((t) => t.createdAt.isSmallerOrEqualValue(endDate));
-
-    final returns = await returnsQuery.get();
-    for (final r in returns) {
-      entries.add(LedgerEntryEntity(
-        date: r.createdAt,
-        description: 'فاتورة مرتجع مبيعات',
-        referenceNumber: 'RET-${r.id}',
-        debit: 0.0, 
-        credit: r.totalAmount, // دائن (له)
-        balance: 0.0,
-      ));
+    // 3. مرتجعات مبيعات العميل (تنقص من مديونية العميل - دائن / له)
+    final custSaleIds = sales.map((s) => s.id).toList();
+    if (custSaleIds.isNotEmpty) {
+      final returns = await (_db.select(_db.returns)..where((r) => r.saleId.isIn(custSaleIds))).get();
+      for (final r in returns) {
+        if (startDate != null && r.createdAt.isBefore(startDate)) continue;
+        if (endDate != null && r.createdAt.isAfter(endDate)) continue;
+        entries.add(LedgerEntryEntity(
+          date: r.createdAt,
+          description: 'فاتورة مرتجع مبيعات (سند #${r.id})',
+          referenceNumber: 'RET-${r.id}',
+          debit: 0.0, 
+          credit: r.totalAmount, // دائن (له / تخفيض للمديونية)
+          balance: 0.0,
+        ));
+      }
     }
-    */
 
     // الترتيب الزمني
     entries.sort((a, b) => a.date.compareTo(b.date));

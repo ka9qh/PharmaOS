@@ -63,6 +63,6 @@ class CashRegisterRepositoryImpl implements CashRegisterRepository {
         bal -= t.amount;
       }
     }
-    return bal;
+    return bal < 0 ? 0.0 : bal;
   }
 }

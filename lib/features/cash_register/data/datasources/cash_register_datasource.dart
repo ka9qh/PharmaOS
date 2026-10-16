@@ -1,4 +1,5 @@
 import '../../../../core/database/app_database.dart';
+import '../../../../core/services/shift_manager_service.dart';
 import 'package:drift/drift.dart';
 
 abstract class CashRegisterDataSource {
@@ -60,6 +61,21 @@ class CashRegisterDataSourceImpl implements CashRegisterDataSource {
         return method == 'نقدي'; // Cash
       }
       return wId == walletId;
+    }
+
+    // 0. Active Shift Opening Float (IN)
+    if (walletId == null) {
+      final activeShift = await ShiftManagerService.getActiveShift();
+      if (activeShift != null && activeShift.countedOpeningCash > 0) {
+        transactions.add(TransactionData(
+          id: -1,
+          description: 'العهدة النقدية الافتتاحية للوردية #${activeShift.id}',
+          amount: activeShift.countedOpeningCash,
+          date: activeShift.startTime,
+          type: 'IN',
+          source: 'opening_float',
+        ));
+      }
     }
 
     // 1. Sales (IN)

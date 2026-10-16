@@ -137,15 +137,26 @@ class TelePharmacyService {
             headers: _getHeaders(apiKey),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = jsonDecode(response.body);
-        if (data is List && data.isNotEmpty) {
-          return TeleConsultation.fromJson(data.first);
-        }
+        try {
+          if (response.body.isNotEmpty) {
+            final data = jsonDecode(response.body);
+            if (data is List && data.isNotEmpty) {
+              return TeleConsultation.fromJson(data.first as Map<String, dynamic>);
+            } else if (data is Map<String, dynamic>) {
+              return TeleConsultation.fromJson(data);
+            }
+          }
+        } catch (_) {}
+        // Fallback representation if 201 or 204 returned without body
+        return TeleConsultation.fromJson({
+          'id': DateTime.now().millisecondsSinceEpoch % 1000000,
+          ...payload,
+        });
       } else {
-        debugPrint('TelePharmacy send error: ${response.statusCode} - ${response.body}');
+        debugPrint('TelePharmacy send response: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       debugPrint('TelePharmacyService sendConsultation error: $e');

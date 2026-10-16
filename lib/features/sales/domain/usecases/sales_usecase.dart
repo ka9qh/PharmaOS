@@ -13,6 +13,11 @@ class CreateSaleUseCase {
     int? customerId,
     int? doctorId,
     int? prescriptionId,
+    int? walletId,
+    String? walletName,
+    String? referenceNumber,
+    double? amountPaid,
+    double? changeAmount,
   }) {
     return _repo.createSale(
       items: items,
@@ -22,6 +27,11 @@ class CreateSaleUseCase {
       customerId: customerId,
       doctorId: doctorId,
       prescriptionId: prescriptionId,
+      walletId: walletId,
+      walletName: walletName,
+      referenceNumber: referenceNumber,
+      amountPaid: amountPaid,
+      changeAmount: changeAmount,
     );
   }
 }

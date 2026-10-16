@@ -1,4 +1,5 @@
 // نافذة الاستشارة الطبية المباشرة وقراءة الروشتات مع المدير - PharmaOS
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -88,43 +89,59 @@ class _TeleConsultationDialogState extends State<TeleConsultationDialog> with Si
       return;
     }
 
-    setState(() => _isSending = true);
-    final tenant = await LicenseService.getTenantConfig();
+    final title = _titleController.text.trim().isEmpty ? 'قراءة روشتة طبية' : _titleController.text.trim();
+    final patientName = _patientController.text.trim().isEmpty ? null : _patientController.text.trim();
+    final notes = _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
+    final imageBase64 = _selectedImageBase64;
+    final urgency = _urgency;
 
-    final result = await TelePharmacyService.sendConsultation(
-      title: _titleController.text.trim().isEmpty ? 'قراءة روشتة طبية' : _titleController.text.trim(),
-      patientName: _patientController.text.trim().isEmpty ? null : _patientController.text.trim(),
-      notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
-      imageBase64: _selectedImageBase64,
-      urgency: _urgency,
-      pharmacistName: 'الصيدلي (${tenant.pharmacyName})',
+    _titleController.clear();
+    _notesController.clear();
+    _patientController.clear();
+    setState(() {
+      _selectedImageBase64 = null;
+      _selectedImageName = null;
+      _isSending = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🚀 جاري إرسال الروشتة للمدير في الخلفية بنجاح...'),
+        backgroundColor: Colors.teal,
+        duration: Duration(seconds: 3),
+      ),
     );
 
-    if (mounted) {
-      setState(() => _isSending = false);
-      if (result != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم إرسال الروشتة للمدير بنجاح! سيصلك الرد فوراً'),
-            backgroundColor: Colors.green,
-          ),
+    _tabController.animateTo(1);
+
+    unawaited(() async {
+      try {
+        final tenant = await LicenseService.getTenantConfig();
+        final result = await TelePharmacyService.sendConsultation(
+          title: title,
+          patientName: patientName,
+          notes: notes,
+          imageBase64: imageBase64,
+          urgency: urgency,
+          pharmacistName: 'الصيدلي (${tenant.pharmacyName})',
         );
-        _titleController.clear();
-        _notesController.clear();
-        _patientController.clear();
-        _selectedImageBase64 = null;
-        _selectedImageName = null;
-        _loadConsultations();
-        _tabController.animateTo(1);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ تعذر الإرسال، تحقق من اتصال الإنترنت'),
-            backgroundColor: Colors.red,
-          ),
-        );
+
+        if (mounted) {
+          _loadConsultations();
+          if (result != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ تم تسليم الروشتة للمدير بنجاح!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('Background send consultation error: $e');
       }
-    }
+    }());
   }
 
   @override

@@ -178,7 +178,7 @@ class CartItemRow extends StatelessWidget {
 
             // 2. اسم الدواء والتركيب السريري
             Container(
-              width: 260,
+              width: 240,
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
               decoration: const BoxDecoration(border: cellBorder),
               child: InkWell(
@@ -233,18 +233,34 @@ class CartItemRow extends StatelessWidget {
               ),
             ),
 
-            // 3. المورد / الوكيل
+            // 3. الشركة المصنعة
             Container(
-              width: 130,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              width: 120,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
               decoration: const BoxDecoration(border: cellBorder),
               alignment: Alignment.center,
               child: Text(
-                item.supplierName != null && item.supplierName!.isNotEmpty
-                    ? item.supplierName!
-                    : (item.companyName != null && item.companyName!.isNotEmpty ? item.companyName! : '-'),
+                item.companyName != null && item.companyName!.isNotEmpty ? item.companyName! : '-',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF0369A1),
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+            // 4. المورد / الوكيل
+            Container(
+              width: 110,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              decoration: const BoxDecoration(border: cellBorder),
+              alignment: Alignment.center,
+              child: Text(
+                item.supplierName != null && item.supplierName!.isNotEmpty ? item.supplierName! : '-',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: Colors.purple.shade700,
                   fontWeight: FontWeight.w500,
                 ),

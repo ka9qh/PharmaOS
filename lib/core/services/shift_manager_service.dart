@@ -348,6 +348,9 @@ class ShiftManagerService {
   }
 
   /// حساب الإحصاءات الحية اللحظية للوردية الحالية
+  static Future<LiveShiftStats> getLiveStats({DateTime? shiftStartOverride}) =>
+      calculateLiveShiftStats(shiftStartOverride: shiftStartOverride);
+
   static Future<LiveShiftStats> calculateLiveShiftStats({DateTime? shiftStartOverride}) async {
     final active = activeShiftNotifier.value ?? await getActiveShift();
     final start = shiftStartOverride ?? active?.startTime ?? DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 0, 0);
