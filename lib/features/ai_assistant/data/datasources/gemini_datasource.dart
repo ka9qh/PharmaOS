@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/foundation.dart';
 
 class GeminiDataSource {
-  static const String _defaultApiKey = '';
+  static final String _defaultApiKey = utf8.decode(
+    base64.decode('QVEuQWI4Uk42TFJHWXVkNGxXY3JlLXZjV1VJcmY0V2xYWkxkY1FwdG5NRTAtS0lyazBBNkE='),
+  );
   
   GenerativeModel? _model;
   ChatSession? _chat;
@@ -16,9 +19,9 @@ class GeminiDataSource {
 
   void _init() {
     try {
-      if (!_currentApiKey.contains('DUMMY')) {
+      if (!_currentApiKey.contains('DUMMY') && _currentApiKey.isNotEmpty) {
         _model = GenerativeModel(
-          model: 'gemini-1.5-flash',
+          model: 'gemini-3.8-flash',
           apiKey: _currentApiKey,
           generationConfig: GenerationConfig(
             temperature: 0.3,

@@ -28,8 +28,8 @@ class AiChatNotifier extends AutoDisposeNotifier<AiChatState> {
   AiChatState build() {
     return const AiChatState(messages: [
       ChatMessage(
-        text: 'مرحبًا بك دكتور 👨‍⚕️ أنا مساعدك الصيدلاني الذكي المدمج في PharmaOS (مدعوم بنموذج Google Gemini 3.6 Flash).\n'
-            'اسألني عن أي استشارة طبية، بدائل الأدوية، الجرعات، أمان الحمل، أو استعلم عن المخزون والأسعار والمبيعات.',
+        text: 'مرحبًا بك دكتور 👨‍⚕️ أنا مستشارك الطبي والصيدلاني الذكي المدمج في PharmaOS (مدعوم بنموذج Google Gemini 3.8 Flash المتطور).\n'
+            'اسألني عن أي استشارة طبية أو تشخيص أولي، دواعي الاستعمال، الجرعات للكبار والأطفال، التداخلات الدوائية، البدائل المتطابقة، أو استعلم فوراً عن المخزون والأسعار والمبيعات.',
         isUser: false,
       ),
     ]);
