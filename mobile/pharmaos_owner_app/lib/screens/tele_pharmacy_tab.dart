@@ -1,4 +1,5 @@
 // تبويب غرفة الروشتات والاستشارات الطبية الفورية - PharmaOS Owner App
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
@@ -17,15 +18,26 @@ class _TelePharmacyTabState extends State<TelePharmacyTab> {
   bool _isLoading = false;
   List<OwnerTeleConsultation> _consultations = [];
   String _selectedFilter = 'all'; // all, pending, answered, resolved
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadConsultations();
+    // تحديث تلقائي كل 10 ثوانٍ لمزامنة الروشتات الفورية
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _loadConsultations(silent: true);
+    });
   }
 
-  Future<void> _loadConsultations() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadConsultations({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final status = _selectedFilter == 'all' ? null : _selectedFilter;
     final list = await OwnerApiService.fetchTeleConsultations(status: status);
     if (mounted) {

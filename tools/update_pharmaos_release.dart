@@ -39,10 +39,15 @@ void main() async {
         }
         try {
           await entity.copy(destPath);
+          print('Updated file: ${p.basename(entity.path)}');
         } catch (_) {
-          await destFile.writeAsBytes(await entity.readAsBytes());
+          try {
+            await destFile.writeAsBytes(await entity.readAsBytes());
+            print('Updated file: ${p.basename(entity.path)}');
+          } catch (e) {
+            print('⚠️ Skipped file in use: ${p.basename(entity.path)}');
+          }
         }
-        print('Updated file: ${p.basename(entity.path)}');
       }
     }
 
@@ -154,7 +159,9 @@ Future<void> _copyDirectory(Directory source, Directory destination) async {
       try {
         await entity.copy(destPath);
       } catch (_) {
-        await destFile.writeAsBytes(await entity.readAsBytes());
+        try {
+          await destFile.writeAsBytes(await entity.readAsBytes());
+        } catch (_) {}
       }
     }
   }

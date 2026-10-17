@@ -21,6 +21,8 @@ class _DashboardTabState extends State<DashboardTab> {
   List<CloudDayClosing> _closings = [];
   double _todaySales = 0;
   double _cashInDrawer = 0;
+  double _walletsSales = 0;
+  double _creditSales = 0;
   int _todayInvoicesCount = 0;
   OwnerAppUpdateInfo? _availableUpdate;
   Timer? _refreshTimer;
@@ -58,14 +60,21 @@ class _DashboardTabState extends State<DashboardTab> {
 
       double total = 0;
       double cashTotal = 0;
+      double walletsTotal = 0;
+      double creditTotal = 0;
       int count = 0;
       final now = DateTime.now();
 
       for (var s in sales) {
         if (s.createdAt.year == now.year && s.createdAt.month == now.month && s.createdAt.day == now.day) {
           total += s.netAmount;
-          if (s.paymentMethod == 'نقدي') {
+          final method = s.paymentMethod.toLowerCase();
+          if (method.contains('نقد') || method == 'cash') {
             cashTotal += s.netAmount;
+          } else if (method.contains('آجل') || method.contains('اجل') || method == 'debt' || method == 'credit') {
+            creditTotal += s.netAmount;
+          } else {
+            walletsTotal += s.netAmount;
           }
           count++;
         }
@@ -81,6 +90,8 @@ class _DashboardTabState extends State<DashboardTab> {
           _todaySales = total;
           _todayInvoicesCount = count;
           _cashInDrawer = drawer;
+          _walletsSales = walletsTotal;
+          _creditSales = creditTotal;
           _isLoading = false;
         });
       }
@@ -298,12 +309,24 @@ class _DashboardTabState extends State<DashboardTab> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildMiniStat(Icons.receipt_long_rounded, '$_todayInvoicesCount فواتير', 'عدد العمليات'),
-                              _buildMiniStat(Icons.point_of_sale_rounded, '${currencyFormat.format(_cashInDrawer)} ر.ي', 'نقد في الدرج'),
-                            ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _buildMiniStat(Icons.receipt_long_rounded, '$_todayInvoicesCount', 'العمليات'),
+                                Container(width: 1, height: 26, color: Colors.white12),
+                                _buildMiniStat(Icons.point_of_sale_rounded, '${currencyFormat.format(_cashInDrawer)}', 'نقد الدرج'),
+                                Container(width: 1, height: 26, color: Colors.white12),
+                                _buildMiniStat(Icons.account_balance_wallet_rounded, '${currencyFormat.format(_walletsSales)}', 'المحافظ'),
+                                Container(width: 1, height: 26, color: Colors.white12),
+                                _buildMiniStat(Icons.credit_score_rounded, '${currencyFormat.format(_creditSales)}', 'الآجل'),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -317,7 +340,7 @@ class _DashboardTabState extends State<DashboardTab> {
                         Expanded(
                           child: _buildMetricCard(
                             title: 'الديون والمؤجل',
-                            value: 'مستقر',
+                            value: '${currencyFormat.format(_creditSales)} ر.ي',
                             subtitle: 'سجل العملاء متزامن',
                             icon: Icons.account_balance_wallet_rounded,
                             color: const Color(0xFFF59E0B),
@@ -375,6 +398,11 @@ class _DashboardTabState extends State<DashboardTab> {
                           final sale = _sales[index];
                           final timeStr = DateFormat('hh:mm a').format(sale.createdAt);
 
+                          final isCash = sale.paymentMethod.contains('نقد') || sale.paymentMethod.toLowerCase() == 'cash';
+                          final isCredit = sale.paymentMethod.contains('آجل') || sale.paymentMethod.contains('اجل') || sale.paymentMethod.toLowerCase() == 'debt';
+                          final badgeColor = isCash ? const Color(0xFF10B981) : (isCredit ? const Color(0xFFF59E0B) : const Color(0xFF8B5CF6));
+                          final badgeIcon = isCash ? Icons.payments_rounded : (isCredit ? Icons.receipt_long_rounded : Icons.account_balance_wallet_rounded);
+
                           return Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -387,23 +415,39 @@ class _DashboardTabState extends State<DashboardTab> {
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withOpacity(0.15),
+                                    color: badgeColor.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF10B981), size: 20),
+                                  child: Icon(badgeIcon, color: badgeColor, size: 20),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'فاتورة #${sale.invoiceNumber}',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'فاتورة #${sale.invoiceNumber}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: badgeColor.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              sale.paymentMethod,
+                                              style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(height: 2),
+                                      const SizedBox(height: 3),
                                       Text(
-                                        '${sale.paymentMethod} • ${sale.cashierName ?? "كاشير"}',
+                                        'كاشير: ${sale.cashierName ?? "المناوب"}${sale.customerName != null && sale.customerName!.isNotEmpty ? " • عميل: ${sale.customerName}" : ""}',
                                         style: const TextStyle(color: Colors.grey, fontSize: 11),
                                       ),
                                     ],
