@@ -556,6 +556,117 @@ class OwnerApiService {
         branchId: branchId);
   }
 
+  /// الاشتراك في بث الفيديو المباشر الحي فائق السرعة عبر Realtime WebSocket (25 FPS)
+  static Stream<Uint8List> subscribeToVideoStream(String channel,
+      {dynamic branchId}) {
+    late StreamController<Uint8List> controller;
+    WebSocket? ws;
+    Timer? heartbeatTimer;
+    Timer? reconnectTimer;
+    bool isDisposed = false;
+    int ref = 1;
+
+    void connect() async {
+      if (isDisposed) return;
+      try {
+        final config = await getConfig();
+        if (config == null || isDisposed) return;
+
+        final wsBase = config.supabaseUrl.replaceFirst(RegExp(r'^http'), 'ws');
+        final wsUrl = '$wsBase/realtime/v1/websocket?apikey=${config.supabaseKey}&vsn=1.0.0';
+
+        ws = await WebSocket.connect(
+          wsUrl,
+          headers: {
+            'apikey': config.supabaseKey,
+            'Authorization': 'Bearer ${config.supabaseKey}',
+          },
+        ).timeout(const Duration(seconds: 4));
+
+        // الانضمام لقناة بث الفيديو الحي live_video_stream
+        ws!.add(jsonEncode({
+          'topic': 'realtime:live_video_stream',
+          'event': 'phx_join',
+          'payload': {
+            'config': {
+              'broadcast': {'self': false, 'ack': false}
+            }
+          },
+          'ref': '${ref++}',
+        }));
+
+        heartbeatTimer?.cancel();
+        heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+          if (ws != null && ws!.readyState == WebSocket.open) {
+            try {
+              ws!.add(jsonEncode({
+                'topic': 'phoenix',
+                'event': 'heartbeat',
+                'payload': {},
+                'ref': '${ref++}',
+              }));
+            } catch (_) {}
+          }
+        });
+
+        ws!.listen(
+          (message) {
+            if (isDisposed) return;
+            try {
+              final data = jsonDecode(message as String);
+              if (data['event'] == 'broadcast') {
+                final payload = data['payload'];
+                if (payload != null && payload['event'] == 'frame_chunk') {
+                  final frameData = payload['payload'];
+                  if (frameData != null) {
+                    final ch = frameData['channel'];
+                    final fBase64 = frameData['frame'];
+                    if (ch == channel && fBase64 != null && fBase64 is String) {
+                      final bytes = base64Decode(fBase64);
+                      if (!controller.isClosed) {
+                        controller.add(bytes);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
+          },
+          onError: (_) {
+            if (!isDisposed) {
+              reconnectTimer = Timer(const Duration(seconds: 2), connect);
+            }
+          },
+          onDone: () {
+            if (!isDisposed) {
+              reconnectTimer = Timer(const Duration(seconds: 2), connect);
+            }
+          },
+        );
+      } catch (_) {
+        if (!isDisposed) {
+          reconnectTimer = Timer(const Duration(seconds: 3), connect);
+        }
+      }
+    }
+
+    controller = StreamController<Uint8List>.broadcast(
+      onListen: () {
+        connect();
+      },
+      onCancel: () {
+        isDisposed = true;
+        heartbeatTimer?.cancel();
+        reconnectTimer?.cancel();
+        try {
+          ws?.close();
+        } catch (_) {}
+      },
+    );
+
+    return controller.stream;
+  }
+
   /// جلب كامل جدول المخزون والأدوية الحقيقية
   static Future<List<CloudMedicine>> fetchMedicinesCatalog(
       {int limit = 200}) async {

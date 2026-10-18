@@ -2,11 +2,10 @@
 // يعالج بث الفيديو الحي (شاشة + كاميرا)، فواتير الشراء، تعديل الأسعار، الدردشة، والنسخ الاحتياطي الفوري
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 import 'package:drift/drift.dart' as drift;
 import 'package:camera/camera.dart';
@@ -27,6 +26,13 @@ class OwnerLiveSyncService {
   static Timer? _screenStreamTimer;
   static Timer? _cameraStreamTimer;
   static CameraController? _cameraController;
+
+  static WebSocket? _realtimeWs;
+  static Timer? _wsHeartbeatTimer;
+  static bool _isConnectingWs = false;
+  static int _wsRef = 1;
+  static DateTime? _lastScreenKeyframeTime;
+  static DateTime? _lastCameraKeyframeTime;
 
   static bool isScreenStreamingActive = false;
   static bool isCameraStreamingActive = false;
@@ -79,6 +85,11 @@ class OwnerLiveSyncService {
     _pollingTimer?.cancel();
     _screenStreamTimer?.cancel();
     _cameraStreamTimer?.cancel();
+    _wsHeartbeatTimer?.cancel();
+    try {
+      _realtimeWs?.close();
+    } catch (_) {}
+    _realtimeWs = null;
     isScreenStreamingActive = false;
     isCameraStreamingActive = false;
     _cameraController?.dispose();
@@ -635,28 +646,104 @@ class OwnerLiveSyncService {
     return false;
   }
 
-  /// بدء بث فيديو مباشر لشاشة النظام (Live Screen Stream)
+  /// التأكد من اتصال قناة البث الحي المباشر فائق السرعة عبر Realtime WebSocket
+  static Future<void> _ensureRealtimeWsConnected(
+      String supabaseUrl, String apiKey) async {
+    if (_realtimeWs != null && _realtimeWs!.readyState == WebSocket.open) {
+      return;
+    }
+    if (_isConnectingWs) return;
+    _isConnectingWs = true;
+
+    try {
+      final wsBase = supabaseUrl.replaceFirst(RegExp(r'^http'), 'ws');
+      final wsUrl = '$wsBase/realtime/v1/websocket?apikey=$apiKey&vsn=1.0.0';
+      try {
+        _realtimeWs?.close();
+      } catch (_) {}
+
+      _realtimeWs = await WebSocket.connect(
+        wsUrl,
+        headers: {
+          'apikey': apiKey,
+          'Authorization': 'Bearer $apiKey',
+        },
+      ).timeout(const Duration(seconds: 4));
+
+      _wsHeartbeatTimer?.cancel();
+      _wsHeartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+        if (_realtimeWs != null && _realtimeWs!.readyState == WebSocket.open) {
+          try {
+            _realtimeWs!.add(jsonEncode({
+              'topic': 'phoenix',
+              'event': 'heartbeat',
+              'payload': {},
+              'ref': '${_wsRef++}',
+            }));
+          } catch (_) {}
+        }
+      });
+
+      // الانضمام لقناة بث الفيديو الحي live_video_stream
+      _realtimeWs!.add(jsonEncode({
+        'topic': 'realtime:live_video_stream',
+        'event': 'phx_join',
+        'payload': {
+          'config': {
+            'broadcast': {'self': false, 'ack': false}
+          }
+        },
+        'ref': '${_wsRef++}',
+      }));
+
+      _realtimeWs!.listen(
+        (_) {},
+        onError: (err) {
+          debugPrint('[StreamWS] Socket error: $err');
+          _realtimeWs = null;
+        },
+        onDone: () {
+          debugPrint('[StreamWS] Socket closed');
+          _realtimeWs = null;
+        },
+      );
+      debugPrint('[StreamWS] Connected to live_video_stream successfully (25 FPS Ready)');
+    } catch (e) {
+      debugPrint('[StreamWS] WebSocket connect failed: $e');
+      _realtimeWs = null;
+    } finally {
+      _isConnectingWs = false;
+    }
+  }
+
+  /// بدء بث فيديو حي فائق السرعة لشاشة النظام (25-30 FPS Live Screen Stream)
   static void startScreenLiveStream() {
     if (isScreenStreamingActive) return;
     isScreenStreamingActive = true;
 
     _screenStreamTimer?.cancel();
+    // 38ms interval = ~26.3 FPS للبث فائق النعومة
     _screenStreamTimer =
-        Timer.periodic(const Duration(milliseconds: 600), (_) async {
+        Timer.periodic(const Duration(milliseconds: 38), (_) async {
       if (!isScreenStreamingActive) return;
       await _captureAndBroadcastFrame('screen');
     });
+    debugPrint('[LiveStream] Screen live video stream active (~26 FPS)');
   }
 
   static void stopScreenLiveStream() {
     isScreenStreamingActive = false;
     _screenStreamTimer?.cancel();
+    _screenStreamTimer = null;
+    _isScreenFrameInProgress = false;
+    debugPrint('[LiveStream] Screen live video stream stopped');
   }
 
   /// تهيئة كاميرا النظام
   static Future<void> _initCamera() async {
-    if (_cameraController != null && _cameraController!.value.isInitialized)
+    if (_cameraController != null && _cameraController!.value.isInitialized) {
       return;
+    }
     try {
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
@@ -666,13 +753,14 @@ class OwnerLiveSyncService {
           enableAudio: false,
         );
         await _cameraController!.initialize();
+        debugPrint('[LiveStream] Camera controller initialized successfully');
       }
     } catch (e) {
       debugPrint('Camera initialization error: $e');
     }
   }
 
-  /// بدء بث فيديو مباشر لكاميرا المراقبة (Live Camera CCTV)
+  /// بدء بث فيديو حي فائق السرعة لكاميرا المراقبة (25 FPS CCTV Live Camera)
   static void startCameraLiveStream() async {
     if (isCameraStreamingActive) return;
     isCameraStreamingActive = true;
@@ -680,22 +768,28 @@ class OwnerLiveSyncService {
     await _initCamera();
 
     _cameraStreamTimer?.cancel();
+    // 40ms interval = 25 FPS للبث فائق النعومة
     _cameraStreamTimer =
-        Timer.periodic(const Duration(milliseconds: 1000), (_) async {
+        Timer.periodic(const Duration(milliseconds: 40), (_) async {
       if (!isCameraStreamingActive) return;
       await _captureAndBroadcastFrame('camera');
     });
+    debugPrint('[LiveStream] CCTV Camera live video stream active (25 FPS)');
   }
 
   static void stopCameraLiveStream() {
     isCameraStreamingActive = false;
     _cameraStreamTimer?.cancel();
+    _cameraStreamTimer = null;
+    _isCameraFrameInProgress = false;
     _cameraController?.dispose();
     _cameraController = null;
+    debugPrint('[LiveStream] CCTV Camera live video stream stopped');
   }
 
-  /// التقاط إطار وبثه سحابياً للمدير
+  /// التقاط إطار وبثه سحابياً للمدير بسرعة 25 FPS عبر قناة Realtime Broadcast مع إسقاط الإطارات المتأخرة
   static Future<void> _captureAndBroadcastFrame(String channel) async {
+    // تقنية إسقاط الإطارات (Frame Skipping): إذا كان الإطار السابق قيد المعالجة يُسقط فوراً لمنع التراكم
     if (channel == 'screen') {
       if (_isScreenFrameInProgress) return;
       _isScreenFrameInProgress = true;
@@ -708,33 +802,31 @@ class OwnerLiveSyncService {
       final tenantConfig = await LicenseService.getTenantConfig();
       final supabaseUrl = await CloudSyncService.getSupabaseUrl();
       final apiKey = await CloudSyncService.getSupabaseAnonKey();
-      final pharmacyId = int.tryParse(tenantConfig.pharmacyId) ?? 1;
+      final pharmacyId = _resolveIntId(tenantConfig.pharmacyId, 2);
+      final branchId = _resolveIntId(tenantConfig.branchId, 2);
+
+      // التأكد من استمرار اتصال قناة البث الحي Realtime WebSocket
+      await _ensureRealtimeWsConnected(supabaseUrl, apiKey);
 
       String frameBase64 = '';
 
       if (channel == 'screen') {
-        final boundary = ScreenshotService.globalBoundaryKey.currentContext
-            ?.findRenderObject() as RenderRepaintBoundary?;
-        if (boundary != null) {
-          final ui.Image image = await boundary.toImage(pixelRatio: 0.5);
-          final ByteData? byteData =
-              await image.toByteData(format: ui.ImageByteFormat.png);
-          if (byteData != null) {
-            frameBase64 = base64Encode(byteData.buffer.asUint8List());
-          }
+        final bytes = await ScreenshotService.captureFrameBytes(pixelRatio: 0.45);
+        if (bytes != null && bytes.isNotEmpty) {
+          frameBase64 = base64Encode(bytes);
         } else {
           frameBase64 = await _renderScreenPlaceholderPng(
               tenantConfig.pharmacyName, tenantConfig.branchId);
         }
       } else {
-        // كاميرا المراقبة CCTV: التقاط حقيقي إذا كانت الكاميرا مهيأة، أو محاكاة
+        // كاميرا المراقبة CCTV: التقاط حقيقي إذا كانت الكاميرا مهيأة، أو محاكاة حية متصلة بدقة 25 FPS
         if (_cameraController != null &&
             _cameraController!.value.isInitialized) {
           try {
             final XFile file = await _cameraController!.takePicture();
             final bytes = await file.readAsBytes();
             frameBase64 = base64Encode(bytes);
-          } catch (e) {
+          } catch (_) {
             frameBase64 = await _renderCctvFrameToPng(
                 tenantConfig.pharmacyName, tenantConfig.branchId);
           }
@@ -745,31 +837,74 @@ class OwnerLiveSyncService {
       }
 
       if (frameBase64.isNotEmpty) {
-        final channelCode = channel == 'screen' ? '01' : '02';
-        final bId = int.tryParse(tenantConfig.branchId) ?? 2;
-        final deterministicId = '00000000-0000-4000-8000-${pharmacyId.toString().padLeft(6, '0')}$channelCode${bId.toString().padLeft(4, '0')}';
+        final now = DateTime.now();
 
-        final frame = StreamFrame(
-          id: deterministicId,
-          channel: channel,
-          pharmacyId: pharmacyId,
-          branchId: tenantConfig.branchId,
-          deviceId: 'dev-main',
-          frameBase64: frameBase64,
-          fps: 15,
-          timestamp: DateTime.now(),
-        );
+        // 1. البث الحي فائق السرعة عبر Realtime WebSocket (25 FPS لحظي بدون تأخير)
+        if (_realtimeWs != null && _realtimeWs!.readyState == WebSocket.open) {
+          final broadcastPayload = {
+            'topic': 'realtime:live_video_stream',
+            'event': 'broadcast',
+            'payload': {
+              'type': 'broadcast',
+              'event': 'frame_chunk',
+              'payload': {
+                'channel': channel,
+                'branch_id': branchId.toString(),
+                'pharmacy_id': pharmacyId,
+                'frame': frameBase64,
+                'fps': 25,
+                'timestamp': now.toIso8601String(),
+              }
+            },
+            'ref': '${_wsRef++}',
+          };
+          try {
+            _realtimeWs!.add(jsonEncode(broadcastPayload));
+          } catch (_) {}
+        }
 
-        await http
-            .post(
-              Uri.parse('$supabaseUrl/rest/v1/cloud_stream_frames'),
-              headers: {
-                ..._headers(apiKey),
-                'Prefer': 'resolution=merge-duplicates',
-              },
-              body: jsonEncode(frame.toJson()),
-            )
-            .timeout(const Duration(seconds: 5));
+        // 2. تحديث الإطار المرجعي (Keyframe) في قاعدة البيانات كل 3.5 ثوانٍ كحد أقصى لمنع استنزاف قاعدة البيانات
+        final lastKeyframe = (channel == 'screen')
+            ? _lastScreenKeyframeTime
+            : _lastCameraKeyframeTime;
+        final shouldSendKeyframe = lastKeyframe == null ||
+            now.difference(lastKeyframe).inMilliseconds >= 3500;
+
+        if (shouldSendKeyframe) {
+          if (channel == 'screen') {
+            _lastScreenKeyframeTime = now;
+          } else {
+            _lastCameraKeyframeTime = now;
+          }
+
+          final channelCode = channel == 'screen' ? '01' : '02';
+          final deterministicId =
+              '00000000-0000-4000-8000-${pharmacyId.toString().padLeft(6, '0')}$channelCode${branchId.toString().padLeft(4, '0')}';
+
+          final frame = StreamFrame(
+            id: deterministicId,
+            channel: channel,
+            pharmacyId: pharmacyId,
+            branchId: tenantConfig.branchId,
+            deviceId: 'dev-main',
+            frameBase64: frameBase64,
+            fps: 25,
+            timestamp: now,
+          );
+
+          // إرسال الإطار كـ Keyframe في الخلفية بدون انتظار حجب تدفق البث
+          unawaited(http
+              .post(
+                Uri.parse('$supabaseUrl/rest/v1/cloud_stream_frames'),
+                headers: {
+                  ..._headers(apiKey),
+                  'Prefer': 'resolution=merge-duplicates',
+                },
+                body: jsonEncode(frame.toJson()),
+              )
+              .timeout(const Duration(seconds: 4))
+              .catchError((_) => http.Response('', 500)));
+        }
       }
     } catch (e) {
       debugPrint('Error in _captureAndBroadcastFrame ($channel): $e');
@@ -788,8 +923,9 @@ class OwnerLiveSyncService {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 640, 360));
       final now = DateTime.now();
+      final msStr = (now.millisecond ~/ 10).toString().padLeft(2, '0');
       final timeStr =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}.$msStr';
 
       // 1. خلفية الكاميرا الداكنة بتأثير المراقبة
       final bgPaint = Paint()..color = const Color(0xFF0F172A);
@@ -807,27 +943,50 @@ class OwnerLiveSyncService {
         canvas.drawLine(Offset(0, y), Offset(640, y), gridPaint);
       }
 
-      // 3. مستطيل التركيز الأوسط
+      // 3. رادار مسح متحرك حي بزاوية تدور بسلاسة عند 25 FPS
+      const center = Offset(320, 180);
+      const radarRadius = 85.0;
+      final sweepAngle =
+          ((now.millisecondsSinceEpoch % 2400) / 2400.0) * 2 * math.pi;
+
+      final radarCirclePaint = Paint()
+        ..color = const Color(0xFF10B981).withValues(alpha: 0.25)
+        ..strokeWidth = 1.2
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(center, 30, radarCirclePaint);
+      canvas.drawCircle(center, 60, radarCirclePaint);
+      canvas.drawCircle(center, radarRadius, radarCirclePaint);
+
+      // خط المسح الراداري الحي
+      final sweepEnd = Offset(
+        center.dx + radarRadius * math.cos(sweepAngle),
+        center.dy + radarRadius * math.sin(sweepAngle),
+      );
+      final sweepLinePaint = Paint()
+        ..color = const Color(0xFF10B981).withValues(alpha: 0.85)
+        ..strokeWidth = 2.0;
+      canvas.drawLine(center, sweepEnd, sweepLinePaint);
+
+      // 4. مستطيل التركيز الأوسط
       final focusPaint = Paint()
         ..color = const Color(0xFF10B981).withValues(alpha: 0.5)
         ..strokeWidth = 1.5
         ..style = PaintingStyle.stroke;
       canvas.drawRRect(
-          RRect.fromRectAndRadius(const Rect.fromLTWH(200, 80, 240, 180),
+          RRect.fromRectAndRadius(const Rect.fromLTWH(200, 80, 240, 200),
               const Radius.circular(12)),
           focusPaint);
 
-      // 4. مؤشر التسجيل المباشر REC 🔴
+      // 5. مؤشر التسجيل المباشر REC 🔴 (نبض حي)
+      final isBlink = (now.millisecondsSinceEpoch ~/ 500) % 2 == 0;
       final recDotPaint = Paint()
-        ..color = (now.second % 2 == 0)
-            ? const Color(0xFFEF4444)
-            : Colors.transparent;
+        ..color = isBlink ? const Color(0xFFEF4444) : const Color(0x33EF4444);
       canvas.drawCircle(const Offset(30, 30), 7, recDotPaint);
 
       final textPainter = TextPainter(textDirection: TextDirection.rtl);
 
       textPainter.text = const TextSpan(
-        text: 'REC • LIVE CCTV HD 1080p',
+        text: 'REC • LIVE CCTV HD 1080p (25 FPS)',
         style: TextStyle(
             color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
       );
@@ -847,7 +1006,7 @@ class OwnerLiveSyncService {
 
       final ltrPainter = TextPainter(textDirection: TextDirection.ltr);
       ltrPainter.text = TextSpan(
-        text: '$timeStr  |  FPS: 15.0  |  CAM-01',
+        text: '$timeStr  |  25.0 FPS  |  CAM-01',
         style: const TextStyle(
             color: Color(0xFF34D399),
             fontSize: 13,
@@ -855,7 +1014,7 @@ class OwnerLiveSyncService {
             fontWeight: FontWeight.bold),
       );
       ltrPainter.layout();
-      ltrPainter.paint(canvas, const Offset(360, 322));
+      ltrPainter.paint(canvas, const Offset(310, 322));
 
       final picture = recorder.endRecording();
       final img = await picture.toImage(640, 360);
@@ -875,8 +1034,9 @@ class OwnerLiveSyncService {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 640, 360));
       final now = DateTime.now();
+      final msStr = (now.millisecond ~/ 10).toString().padLeft(2, '0');
       final timeStr =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}.$msStr';
 
       final bgPaint = Paint()..color = const Color(0xFF1E1B4B);
       canvas.drawRect(const Rect.fromLTWH(0, 0, 640, 360), bgPaint);
@@ -884,7 +1044,7 @@ class OwnerLiveSyncService {
       final textPainter = TextPainter(textDirection: TextDirection.rtl);
       textPainter.text = TextSpan(
         text:
-            '🖥️ شاشة نظام كاشير PharmaOS المباشرة\n$pharmacyName - فرع #$branchId\nالوقت الحي: $timeStr\nالنظام في وضع الاستعداد والبيع الفوري',
+            '🖥️ شاشة نظام كاشير PharmaOS المباشرة (25 FPS)\n$pharmacyName - فرع #$branchId\nالوقت الحي: $timeStr\nالنظام في وضع البث الفوري والتحديث التلقائي',
         style: const TextStyle(
             color: Colors.white,
             fontSize: 16,

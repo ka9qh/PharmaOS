@@ -34,6 +34,19 @@ class ScreenshotService {
     floatingButtonNotifier.value = enabled;
   }
 
+  /// التقاط إطار شاشة سريع جداً في الذاكرة للبث الحي فائق السرعة
+  static Future<Uint8List?> captureFrameBytes({double pixelRatio = 0.45}) async {
+    try {
+      final boundary = globalBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
   // تنفيذ التقاط الشاشة وحفظها
   static Future<File?> captureAndSave([BuildContext? context]) async {
     try {
