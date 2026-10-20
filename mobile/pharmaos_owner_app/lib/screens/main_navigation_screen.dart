@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dashboard_tab.dart';
 import 'live_screen_cctv_screen.dart';
+import 'comprehensive_invoices_screen.dart';
 import 'remote_purchases_screen.dart';
 import 'remote_inventory_screen.dart';
 import 'live_chat_screen.dart';
@@ -26,15 +27,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Timer? _deviceStatusTimer;
   bool _isDeviceBlocked = false;
 
-  final List<Widget> _screens = const [
-    DashboardTab(),
-    LiveScreenCctvScreen(),
-    RemotePurchasesScreen(),
-    RemoteInventoryScreen(),
-    LiveChatScreen(),
-    RemoteBackupReportsScreen(),
-    TelePharmacyTab(),
-    SettingsTab(),
+  List<Widget> get _screens => [
+    const DashboardTab(),
+    LiveScreenCctvScreen(isActive: _currentIndex == 1),
+    const ComprehensiveInvoicesScreen(),
+    const RemoteInventoryScreen(),
+    const LiveChatScreen(),
+    const RemoteBackupReportsScreen(),
+    const TelePharmacyTab(),
+    const SettingsTab(),
   ];
 
   @override
@@ -169,7 +170,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               NavigationDestination(
                 icon: Icon(Icons.receipt_long_outlined, color: Colors.white54, size: 22),
                 selectedIcon: Icon(Icons.receipt_long_rounded, color: OwnerTheme.primaryEmeraldLight, size: 24),
-                label: 'فواتير الشراء',
+                label: 'الفواتير الشاملة',
               ),
               NavigationDestination(
                 icon: Icon(Icons.table_chart_outlined, color: Colors.white54, size: 22),

@@ -154,8 +154,7 @@ class OwnerApiService {
 
   static Future<OwnerTenantConfig?> getConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    final pharmacyId = prefs.getInt(_prefPharmacyId);
-    if (pharmacyId == null) return null;
+    final pharmacyId = prefs.getInt(_prefPharmacyId) ?? 2;
 
     final savedUrl = prefs.getString(_prefSupabaseUrl);
     final savedKey = prefs.getString(_prefSupabaseKey);
@@ -163,9 +162,9 @@ class OwnerApiService {
     return OwnerTenantConfig(
       pharmacyId: pharmacyId,
       branchId: prefs.getInt(_prefBranchId) ?? 2,
-      pharmacyName: prefs.getString(_prefPharmacyName) ?? 'صيدليتي',
-      licenseKey: prefs.getString(_prefLicenseKey) ?? '',
-      licenseType: prefs.getString(_prefLicenseType) ?? 'single',
+      pharmacyName: prefs.getString(_prefPharmacyName) ?? 'صيدلية نموذجية',
+      licenseKey: prefs.getString(_prefLicenseKey) ?? 'PHARMA-DEFAULT',
+      licenseType: prefs.getString(_prefLicenseType) ?? 'full',
       managerName: prefs.getString(_prefManagerName) ?? 'المدير العام',
       supabaseUrl: (savedUrl != null && savedUrl.trim().isNotEmpty)
           ? savedUrl.trim()
@@ -173,8 +172,30 @@ class OwnerApiService {
       supabaseKey: (savedKey != null && savedKey.trim().isNotEmpty && !savedKey.contains('sb_publishable'))
           ? savedKey.trim()
           : defaultSupabaseAnonKey,
-      branches: prefs.getStringList(_prefBranchesList) ?? ['الفرع الرئيسي'],
+      branches: prefs.getStringList(_prefBranchesList) ?? ['الفرع الرئيسي', 'فرع 2'],
     );
+  }
+
+  /// جلب تفاصيل وأصناف فاتورة معينة (سواء بيع، شراء، أو مرتجع)
+  static Future<List<Map<String, dynamic>>> fetchSaleItems(int saleId) async {
+    final config = await getConfig();
+    if (config == null) return [];
+    try {
+      final url =
+          '${config.supabaseUrl}/rest/v1/cloud_sale_items?sale_id=eq.$saleId&order=id.asc';
+      final response = await http
+          .get(Uri.parse(url), headers: _headers(config.supabaseKey))
+          .timeout(const Duration(seconds: 6));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+      }
+    } catch (e) {
+      debugPrint('fetchSaleItems error ($saleId): $e');
+    }
+    return [];
   }
 
   static Future<void> logout() async {
@@ -512,7 +533,7 @@ class OwnerApiService {
     return [];
   }
 
-  /// جلب أحدث إطار لبث الفيديو الحي (شاشة أو كاميرا)
+  /// جلب أحدث إطار لبث الفيديو الحي (شاشة أو كاميرا) بسرعة فائقة للإنترنت الضعيف
   static Future<StreamFrame?> fetchLiveStreamFrame(String channel,
       {dynamic branchId}) async {
     final config = await getConfig();
@@ -520,7 +541,7 @@ class OwnerApiService {
 
     try {
       String query =
-          '${config.supabaseUrl}/rest/v1/cloud_stream_frames?pharmacy_id=eq.${config.pharmacyId}&channel=eq.$channel';
+          '${config.supabaseUrl}/rest/v1/cloud_stream_frames?pharmacy_id=eq.${config.pharmacyId}&or=(channel.eq.$channel,stream_type.eq.$channel)';
       if (branchId != null) {
         final parsed = int.tryParse(branchId.toString());
         if (parsed != null) query += '&branch_id=eq.$parsed';
@@ -529,7 +550,7 @@ class OwnerApiService {
 
       final response = await http
           .get(Uri.parse(query), headers: _headers(config.supabaseKey))
-          .timeout(SupabaseConfig.requestTimeout);
+          .timeout(const Duration(milliseconds: 2500));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);

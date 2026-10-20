@@ -15,17 +15,17 @@ import '../../app/app_router.dart';
 class ScreenshotService {
   static final GlobalKey globalBoundaryKey = GlobalKey();
   static const String _showFloatingButtonKey = 'show_screenshot_floating_btn_v1';
-  static final ValueNotifier<bool> floatingButtonNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> floatingButtonNotifier = ValueNotifier<bool>(false);
 
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool(_showFloatingButtonKey) ?? true;
+    final enabled = prefs.getBool(_showFloatingButtonKey) ?? false;
     floatingButtonNotifier.value = enabled;
   }
 
   static Future<bool> isFloatingButtonEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_showFloatingButtonKey) ?? true;
+    return prefs.getBool(_showFloatingButtonKey) ?? false;
   }
 
   static Future<void> setFloatingButtonEnabled(bool enabled) async {
@@ -34,8 +34,8 @@ class ScreenshotService {
     floatingButtonNotifier.value = enabled;
   }
 
-  /// التقاط إطار شاشة سريع جداً في الذاكرة للبث الحي فائق السرعة
-  static Future<Uint8List?> captureFrameBytes({double pixelRatio = 0.45}) async {
+  /// التقاط إطار شاشة فائق الخفة والسرعة مناسب للإنترنت الضعيف جداً
+  static Future<Uint8List?> captureFrameBytes({double pixelRatio = 0.22}) async {
     try {
       final boundary = globalBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return null;

@@ -164,18 +164,21 @@ class CloudSyncService {
         debugPrint('[CloudSync] pharmacies register exception: $e');
       }
 
-      // 2. مزامنة فواتير المبيعات الحديثة (Cloud Sales)
+      // 2.1 مزامنة فواتير المبيعات مع تفاصيل الأصناف (Cloud Sales & Items)
+      final pharmacyIntId = int.tryParse(tenantConfig.pharmacyId) ?? 2;
+      final branchIntId = int.tryParse(tenantConfig.branchId) ?? 2;
+
       final recentSales = await (db.select(db.sales)
             ..orderBy([(s) => drift.OrderingTerm.desc(s.createdAt)])
-            ..limit(50))
+            ..limit(100))
           .get();
 
       if (recentSales.isNotEmpty) {
         final salesPayload = recentSales.map((s) {
           final net = s.totalAmount - s.discount;
           return {
-            'pharmacy_id': int.tryParse(tenantConfig.pharmacyId) ?? 2,
-            'branch_id': int.tryParse(tenantConfig.branchId) ?? 2,
+            'pharmacy_id': pharmacyIntId,
+            'branch_id': branchIntId,
             'local_sale_id': s.id,
             'invoice_number': s.invoiceNumber,
             'total_amount': s.totalAmount,
@@ -193,18 +196,231 @@ class CloudSyncService {
               Uri.parse('$supabaseUrl/rest/v1/cloud_sales'),
               headers: {
                 ...headers,
-                'Prefer': 'resolution=merge-duplicates',
+                'Prefer': 'resolution=merge-duplicates,return=representation',
               },
               body: jsonEncode(salesPayload),
             )
             .timeout(SupabaseConfig.requestTimeout);
 
-        if (res.statusCode == 201 || res.statusCode == 200 || res.statusCode == 204) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
           syncedSalesCount = recentSales.length;
           debugPrint('[CloudSync] cloud_sales synced successfully ($syncedSalesCount records)');
+
+          // مزامنة أصناف فواتير المبيعات
+          try {
+            final salesList = jsonDecode(res.body);
+            if (salesList is List) {
+              final List<Map<String, dynamic>> allSaleItems = [];
+              for (final sRow in salesList) {
+                final cloudSaleId = sRow['id'];
+                final localSaleId = sRow['local_sale_id'];
+                if (cloudSaleId != null && localSaleId is int) {
+                  final items = await (db.select(db.saleItems)
+                        ..where((i) => i.saleId.equals(localSaleId)))
+                      .get();
+                  for (final item in items) {
+                    final med = await (db.select(db.medicines)
+                          ..where((m) => m.id.equals(item.medicineId)))
+                        .getSingleOrNull();
+                    allSaleItems.add({
+                      'pharmacy_id': pharmacyIntId,
+                      'sale_id': cloudSaleId,
+                      'medicine_name': med?.nameAr ?? 'دواء #${item.medicineId}',
+                      'quantity': item.quantity,
+                      'unit_price': item.unitPrice,
+                      'total_price': item.total > 0
+                          ? item.total
+                          : (item.quantity * item.unitPrice),
+                      'unit_name': item.unitName ?? 'باكت',
+                    });
+                  }
+                }
+              }
+              if (allSaleItems.isNotEmpty) {
+                await http.post(
+                  Uri.parse('$supabaseUrl/rest/v1/cloud_sale_items'),
+                  headers: {
+                    ...headers,
+                    'Prefer': 'resolution=merge-duplicates',
+                  },
+                  body: jsonEncode(allSaleItems),
+                ).timeout(SupabaseConfig.requestTimeout);
+                debugPrint('[CloudSync] synced ${allSaleItems.length} sale items');
+              }
+            }
+          } catch (e) {
+            debugPrint('[CloudSync] sale items sync error: $e');
+          }
         } else {
           debugPrint('[CloudSync] cloud_sales failed with status [${res.statusCode}]: ${res.body}');
         }
+      }
+
+      // 2.2 مزامنة فواتير الشراء الشاملة (Purchases)
+      try {
+        final recentPurchases = await (db.select(db.purchases)
+              ..orderBy([(p) => drift.OrderingTerm.desc(p.createdAt)])
+              ..limit(50))
+            .get();
+
+        if (recentPurchases.isNotEmpty) {
+          final purchasesAsSales = <Map<String, dynamic>>[];
+          for (final p in recentPurchases) {
+            final supplier = await (db.select(db.suppliers)
+                  ..where((s) => s.id.equals(p.supplierId)))
+                .getSingleOrNull();
+            purchasesAsSales.add({
+              'pharmacy_id': pharmacyIntId,
+              'branch_id': branchIntId,
+              'local_sale_id': 1000000 + p.id,
+              'invoice_number': p.purchaseNumber,
+              'total_amount': p.totalAmount,
+              'discount_amount': 0.0,
+              'net_amount': p.totalAmount,
+              'paid_amount': p.paidAmount,
+              'payment_method': p.paymentMethod,
+              'cashier_name': 'مورد: ${supplier?.name ?? "عام"}',
+              'customer_name': supplier?.name ?? 'مورد',
+              'created_at': p.createdAt.toIso8601String(),
+            });
+          }
+
+          final pRes = await http.post(
+            Uri.parse('$supabaseUrl/rest/v1/cloud_sales'),
+            headers: {
+              ...headers,
+              'Prefer': 'resolution=merge-duplicates,return=representation',
+            },
+            body: jsonEncode(purchasesAsSales),
+          ).timeout(SupabaseConfig.requestTimeout);
+
+          if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
+            final pList = jsonDecode(pRes.body);
+            if (pList is List) {
+              final List<Map<String, dynamic>> allPurItems = [];
+              for (final pRow in pList) {
+                final cloudSaleId = pRow['id'];
+                final localPurId = (pRow['local_sale_id'] as int? ?? 0) - 1000000;
+                if (cloudSaleId != null && localPurId > 0) {
+                  final pItems = await (db.select(db.purchaseItems)
+                        ..where((i) => i.purchaseId.equals(localPurId)))
+                      .get();
+                  for (final pi in pItems) {
+                    final med = await (db.select(db.medicines)
+                          ..where((m) => m.id.equals(pi.medicineId)))
+                        .getSingleOrNull();
+                    allPurItems.add({
+                      'pharmacy_id': pharmacyIntId,
+                      'sale_id': cloudSaleId,
+                      'medicine_name': med?.nameAr ?? 'صنف #${pi.medicineId}',
+                      'quantity': pi.quantity,
+                      'unit_price': pi.unitCost,
+                      'total_price': pi.subtotal > 0
+                          ? pi.subtotal
+                          : (pi.quantity * pi.unitCost),
+                      'unit_name': pi.unitName ?? 'عبوة',
+                    });
+                  }
+                }
+              }
+              if (allPurItems.isNotEmpty) {
+                await http.post(
+                  Uri.parse('$supabaseUrl/rest/v1/cloud_sale_items'),
+                  headers: {
+                    ...headers,
+                    'Prefer': 'resolution=merge-duplicates',
+                  },
+                  body: jsonEncode(allPurItems),
+                ).timeout(SupabaseConfig.requestTimeout);
+                debugPrint('[CloudSync] synced ${allPurItems.length} purchase items');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[CloudSync] purchases sync error: $e');
+      }
+
+      // 2.3 مزامنة فواتير المرتجعات (Returns)
+      try {
+        final recentReturns = await (db.select(db.returns)
+              ..orderBy([(r) => drift.OrderingTerm.desc(r.createdAt)])
+              ..limit(50))
+            .get();
+
+        if (recentReturns.isNotEmpty) {
+          final returnsAsSales = <Map<String, dynamic>>[];
+          for (final r in recentReturns) {
+            returnsAsSales.add({
+              'pharmacy_id': pharmacyIntId,
+              'branch_id': branchIntId,
+              'local_sale_id': 2000000 + r.id,
+              'invoice_number': 'RET-${r.id.toString().padLeft(4, '0')}',
+              'total_amount': r.totalAmount,
+              'discount_amount': 0.0,
+              'net_amount': r.totalAmount,
+              'paid_amount': r.totalAmount,
+              'payment_method': r.paymentMethod,
+              'cashier_name': 'مرتجع: ${r.reason ?? "استرجاع أصناف"}',
+              'customer_name': 'مرتجع مبيعات',
+              'created_at': r.createdAt.toIso8601String(),
+            });
+          }
+
+          final rRes = await http.post(
+            Uri.parse('$supabaseUrl/rest/v1/cloud_sales'),
+            headers: {
+              ...headers,
+              'Prefer': 'resolution=merge-duplicates,return=representation',
+            },
+            body: jsonEncode(returnsAsSales),
+          ).timeout(SupabaseConfig.requestTimeout);
+
+          if (rRes.statusCode >= 200 && rRes.statusCode < 300) {
+            final rList = jsonDecode(rRes.body);
+            if (rList is List) {
+              final List<Map<String, dynamic>> allRetItems = [];
+              for (final rRow in rList) {
+                final cloudSaleId = rRow['id'];
+                final localRetId = (rRow['local_sale_id'] as int? ?? 0) - 2000000;
+                if (cloudSaleId != null && localRetId > 0) {
+                  final retItems = await (db.select(db.returnItems)
+                        ..where((i) => i.returnId.equals(localRetId)))
+                      .get();
+                  for (final ri in retItems) {
+                    final med = await (db.select(db.medicines)
+                          ..where((m) => m.id.equals(ri.medicineId)))
+                        .getSingleOrNull();
+                    allRetItems.add({
+                      'pharmacy_id': pharmacyIntId,
+                      'sale_id': cloudSaleId,
+                      'medicine_name': med?.nameAr ?? 'صنف مرتجع #${ri.medicineId}',
+                      'quantity': ri.quantity,
+                      'unit_price': ri.unitPrice,
+                      'total_price': ri.subtotal > 0
+                          ? ri.subtotal
+                          : (ri.quantity * ri.unitPrice),
+                      'unit_name': 'وحدة',
+                    });
+                  }
+                }
+              }
+              if (allRetItems.isNotEmpty) {
+                await http.post(
+                  Uri.parse('$supabaseUrl/rest/v1/cloud_sale_items'),
+                  headers: {
+                    ...headers,
+                    'Prefer': 'resolution=merge-duplicates',
+                  },
+                  body: jsonEncode(allRetItems),
+                ).timeout(SupabaseConfig.requestTimeout);
+                debugPrint('[CloudSync] synced ${allRetItems.length} return items');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[CloudSync] returns sync error: $e');
       }
 
       // 3. مزامنة تقارير الإغلاقات والورديات (Cloud Closings)

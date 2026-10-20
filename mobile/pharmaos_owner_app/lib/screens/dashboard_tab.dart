@@ -1,11 +1,14 @@
 // تبويب لوحة المبيعات والرقابة المالية اللحظية - PharmaOS Owner App
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../services/owner_api_service.dart';
 import '../services/app_updater_service.dart';
 import '../widgets/luxury_app_avatar.dart';
+import 'comprehensive_invoices_screen.dart';
 
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
@@ -27,15 +30,91 @@ class _DashboardTabState extends State<DashboardTab> {
   OwnerAppUpdateInfo? _availableUpdate;
   Timer? _refreshTimer;
 
+  static const String _prefCachedSales = 'cached_dashboard_sales_v1';
+  static const String _prefCachedClosings = 'cached_dashboard_closings_v1';
+
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadCachedData();
+    _loadData(silent: true);
     _checkUpdates();
     // تحديث تلقائي كل 10 ثوانٍ (Reactivity)
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted) _loadData(silent: true);
     });
+  }
+
+  Future<void> _loadCachedData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final config = await OwnerApiService.getConfig();
+      final salesJson = prefs.getString(_prefCachedSales);
+      final closingsJson = prefs.getString(_prefCachedClosings);
+
+      List<CloudSale> cachedSales = [];
+      List<CloudDayClosing> cachedClosings = [];
+
+      if (salesJson != null) {
+        final list = jsonDecode(salesJson) as List;
+        cachedSales = list.map((j) => CloudSale.fromJson(j)).toList();
+      }
+      if (closingsJson != null) {
+        final list = jsonDecode(closingsJson) as List;
+        cachedClosings = list.map((j) => CloudDayClosing.fromJson(j)).toList();
+      }
+
+      if (mounted && (cachedSales.isNotEmpty || cachedClosings.isNotEmpty)) {
+        _applyData(cachedSales, cachedClosings, config: config);
+      }
+    } catch (_) {}
+  }
+
+  void _applyData(List<CloudSale> sales, List<CloudDayClosing> closings,
+      {OwnerTenantConfig? config}) {
+    double total = 0;
+    double cashTotal = 0;
+    double walletsTotal = 0;
+    double creditTotal = 0;
+    int count = 0;
+    final now = DateTime.now();
+
+    for (var s in sales) {
+      if (s.createdAt.year == now.year &&
+          s.createdAt.month == now.month &&
+          s.createdAt.day == now.day) {
+        total += s.netAmount;
+        final method = s.paymentMethod.toLowerCase();
+        if (method.contains('نقد') || method == 'cash') {
+          cashTotal += s.netAmount;
+        } else if (method.contains('آجل') ||
+            method.contains('اجل') ||
+            method == 'debt' ||
+            method == 'credit') {
+          creditTotal += s.netAmount;
+        } else {
+          walletsTotal += s.netAmount;
+        }
+        count++;
+      }
+    }
+
+    double drawer =
+        closings.isNotEmpty ? closings.first.cashInDrawer : cashTotal;
+
+    if (mounted) {
+      setState(() {
+        if (config != null) _config = config;
+        _sales = sales;
+        _closings = closings;
+        _todaySales = total;
+        _todayInvoicesCount = count;
+        _cashInDrawer = drawer;
+        _walletsSales = walletsTotal;
+        _creditSales = creditTotal;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -52,51 +131,32 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 
   Future<void> _loadData({bool silent = false}) async {
-    if (!silent) setState(() => _isLoading = true);
+    if (!silent && _sales.isEmpty) setState(() => _isLoading = true);
     try {
-      final config = await OwnerApiService.getConfig();
-      final sales = await OwnerApiService.fetchSales(limit: 50);
-      final closings = await OwnerApiService.fetchDayClosings(limit: 15);
+      // جلب متوازي فوري لا يحجب الشاشة
+      final results = await Future.wait([
+        OwnerApiService.getConfig(),
+        OwnerApiService.fetchSales(limit: 50),
+        OwnerApiService.fetchDayClosings(limit: 15),
+      ]);
 
-      double total = 0;
-      double cashTotal = 0;
-      double walletsTotal = 0;
-      double creditTotal = 0;
-      int count = 0;
-      final now = DateTime.now();
+      final config = results[0] as OwnerTenantConfig?;
+      final sales = results[1] as List<CloudSale>;
+      final closings = results[2] as List<CloudDayClosing>;
 
-      for (var s in sales) {
-        if (s.createdAt.year == now.year && s.createdAt.month == now.month && s.createdAt.day == now.day) {
-          total += s.netAmount;
-          final method = s.paymentMethod.toLowerCase();
-          if (method.contains('نقد') || method == 'cash') {
-            cashTotal += s.netAmount;
-          } else if (method.contains('آجل') || method.contains('اجل') || method == 'debt' || method == 'credit') {
-            creditTotal += s.netAmount;
-          } else {
-            walletsTotal += s.netAmount;
-          }
-          count++;
-        }
-      }
+      _applyData(sales, closings, config: config);
 
-      double drawer = closings.isNotEmpty ? closings.first.cashInDrawer : cashTotal;
-
-      if (mounted) {
-        setState(() {
-          _config = config;
-          _sales = sales;
-          _closings = closings;
-          _todaySales = total;
-          _todayInvoicesCount = count;
-          _cashInDrawer = drawer;
-          _walletsSales = walletsTotal;
-          _creditSales = creditTotal;
-          _isLoading = false;
-        });
-      }
+      // حفظ الكاش محلياً في الخلفية لفتحه فورياً عند انقطاع أو ضعف النت
+      SharedPreferences.getInstance().then((prefs) {
+        try {
+          prefs.setString(_prefCachedSales,
+              jsonEncode(sales.map((s) => s.toJson()).toList()));
+          prefs.setString(_prefCachedClosings,
+              jsonEncode(closings.map((c) => c.toJson()).toList()));
+        } catch (_) {}
+      });
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && _sales.isEmpty) setState(() => _isLoading = false);
     }
   }
 
@@ -369,9 +429,27 @@ class _DashboardTabState extends State<DashboardTab> {
                           'آخر فواتير المبيعات اللحظية',
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
-                        Text(
-                          '${_sales.length} فاتورة',
-                          style: const TextStyle(fontSize: 12, color: Colors.cyanAccent),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const ComprehensiveInvoicesScreen()),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'عرض الكل (${_sales.length})',
+                                  style: const TextStyle(fontSize: 12, color: Colors.cyanAccent, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.cyanAccent, size: 11),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -403,68 +481,74 @@ class _DashboardTabState extends State<DashboardTab> {
                           final badgeColor = isCash ? const Color(0xFF10B981) : (isCredit ? const Color(0xFFF59E0B) : const Color(0xFF8B5CF6));
                           final badgeIcon = isCash ? Icons.payments_rounded : (isCredit ? Icons.receipt_long_rounded : Icons.account_balance_wallet_rounded);
 
-                          return Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: badgeColor.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(10),
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => InvoiceDetailsSheet.show(context, sale),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: badgeColor.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(badgeIcon, color: badgeColor, size: 20),
                                   ),
-                                  child: Icon(badgeIcon, color: badgeColor, size: 20),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'فاتورة #${sale.invoiceNumber}',
+                                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: badgeColor.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                sale.paymentMethod,
+                                                style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          'كاشير: ${sale.cashierName ?? "المناوب"}${sale.customerName != null && sale.customerName!.isNotEmpty ? " • عميل: ${sale.customerName}" : ""}',
+                                          style: const TextStyle(color: Colors.grey, fontSize: 11),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            'فاتورة #${sale.invoiceNumber}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: badgeColor.withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Text(
-                                              sale.paymentMethod,
-                                              style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 3),
                                       Text(
-                                        'كاشير: ${sale.cashierName ?? "المناوب"}${sale.customerName != null && sale.customerName!.isNotEmpty ? " • عميل: ${sale.customerName}" : ""}',
-                                        style: const TextStyle(color: Colors.grey, fontSize: 11),
+                                        '${currencyFormat.format(sale.netAmount)} ر.ي',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 14),
                                       ),
+                                      const SizedBox(height: 2),
+                                      Text(timeStr, style: const TextStyle(color: Colors.grey, fontSize: 10)),
                                     ],
                                   ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${currencyFormat.format(sale.netAmount)} ر.ي',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 14),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(timeStr, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-                                  ],
-                                ),
-                              ],
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.chevron_left_rounded, color: Colors.white24, size: 18),
+                                ],
+                              ),
                             ),
                           );
                         },

@@ -70,6 +70,21 @@ class CloudSale {
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'pharmacy_id': pharmacyId,
+    'branch_id': branchId,
+    'invoice_number': invoiceNumber,
+    'total_amount': totalAmount,
+    'discount_amount': discountAmount,
+    'net_amount': netAmount,
+    'paid_amount': paidAmount,
+    'payment_method': paymentMethod,
+    'cashier_name': cashierName,
+    'customer_name': customerName,
+    'created_at': createdAt.toIso8601String(),
+  };
 }
 
 class CloudDayClosing {
@@ -111,6 +126,19 @@ class CloudDayClosing {
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) ?? DateTime.now() : DateTime.now(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'pharmacy_id': pharmacyId,
+    'branch_id': branchId,
+    'date': date.toIso8601String(),
+    'total_sales': totalSales,
+    'total_returns': totalReturns,
+    'total_expenses': totalExpenses,
+    'net_profit': netProfit,
+    'cash_in_drawer': cashInDrawer,
+    'created_at': createdAt.toIso8601String(),
+  };
 }
 
 class CloudMedicine {

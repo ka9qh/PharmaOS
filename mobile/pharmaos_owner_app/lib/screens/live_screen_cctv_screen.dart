@@ -8,7 +8,8 @@ import '../theme/owner_theme.dart';
 import '../widgets/luxury_background.dart';
 
 class LiveScreenCctvScreen extends StatefulWidget {
-  const LiveScreenCctvScreen({super.key});
+  final bool isActive;
+  const LiveScreenCctvScreen({super.key, this.isActive = true});
 
   @override
   State<LiveScreenCctvScreen> createState() => _LiveScreenCctvScreenState();
@@ -46,16 +47,27 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen>
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
 
-    _loadBranchesAndStart();
+    _initStream();
   }
 
-  void _handleTabChange() {
-    if (_tabController.indexIsChanging) {
-      _startLiveStreamForCurrentTab();
+  @override
+  void didUpdateWidget(covariant LiveScreenCctvScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive != oldWidget.isActive) {
+      if (widget.isActive) {
+        _startLiveStreamForCurrentTab();
+      } else {
+        _stopLiveStream();
+      }
     }
   }
 
-  Future<void> _loadBranchesAndStart() async {
+  void _stopLiveStream() {
+    _videoSubscription?.cancel();
+    _watchdogTimer?.cancel();
+  }
+
+  Future<void> _initStream() async {
     final config = await OwnerApiService.getConfig();
     if (config != null && config.branches.isNotEmpty) {
       if (mounted) {
@@ -65,12 +77,20 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen>
         });
       }
     }
-    _startLiveStreamForCurrentTab();
+    if (widget.isActive) {
+      _startLiveStreamForCurrentTab();
+    }
+  }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging && widget.isActive) {
+      _startLiveStreamForCurrentTab();
+    }
   }
 
   String get _currentChannel => _tabController.index == 0 ? 'screen' : 'camera';
 
-  /// تشغيل تدفق الفيديو المباشر اللحظي عبر Realtime WebSocket للقناة النشطة
+  /// تشغيل تدفق الفيديو المباشر اللحظي المزدوج (Realtime WebSocket + HTTP Polling السريع جداً)
   void _startLiveStreamForCurrentTab() {
     _videoSubscription?.cancel();
     _watchdogTimer?.cancel();
@@ -85,7 +105,7 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen>
     // 2. جلب فوري لآخر إطار مرجعي لمنع الشاشة السوداء أثناء بدء الاتصال
     _fetchInitialKeyframe(channel);
 
-    // 3. الاشتراك المباشر في تدفق الـ 25 FPS عبر قناة Realtime WebSocket
+    // 3. الاشتراك المباشر في تدفق Realtime WebSocket
     _videoSubscription = OwnerApiService.subscribeToVideoStream(
       channel,
       branchId: _selectedBranch,
@@ -114,38 +134,48 @@ class _LiveScreenCctvScreenState extends State<LiveScreenCctvScreen>
         });
       },
       onError: (_) {
-        // إعادة المحاولة التلقائية
         _fetchInitialKeyframe(channel);
       },
     );
 
-    // 4. مؤقت أمان دوري للتأكد من استمرار البث حتى في حال تقلبات الشبكة
-    _watchdogTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
+    // 4. نظام المراقبة المتكيف للنت الضعيف (Adaptive Fallback Watchdog):
+    // يستطلع HTTP فقط إذا توقف أو تأخر تدفق السوكت أكثر من 1.5 ثانية وبشكل متسلسل غير متراكم
+    _watchdogTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       if (!mounted || !_isStreaming) return;
       final lastTime = channel == 'screen' ? _lastScreenTime : _lastCameraTime;
       if (lastTime == null ||
-          DateTime.now().difference(lastTime).inMilliseconds > 2400) {
+          DateTime.now().difference(lastTime).inMilliseconds >= 1500) {
         _fetchInitialKeyframe(channel);
       }
     });
   }
 
+  bool _isFetchingHttp = false;
+
   Future<void> _fetchInitialKeyframe(String channel) async {
-    final frame = await OwnerApiService.fetchLiveStreamFrame(channel,
-        branchId: _selectedBranch);
-    if (frame != null && mounted) {
-      try {
-        final bytes = base64Decode(frame.frameBase64);
-        setState(() {
-          if (channel == 'screen') {
-            _screenFrameBytes = bytes;
-            _lastScreenTime = frame.timestamp;
-          } else {
-            _cameraFrameBytes = bytes;
-            _lastCameraTime = frame.timestamp;
+    if (_isFetchingHttp || !mounted || !_isStreaming) return;
+    _isFetchingHttp = true;
+    try {
+      final frame = await OwnerApiService.fetchLiveStreamFrame(channel,
+          branchId: _selectedBranch);
+      if (frame != null && mounted) {
+        try {
+          final bytes = base64Decode(frame.frameBase64);
+          if (bytes.isNotEmpty) {
+            setState(() {
+              if (channel == 'screen') {
+                _screenFrameBytes = bytes;
+                _lastScreenTime = frame.timestamp;
+              } else {
+                _cameraFrameBytes = bytes;
+                _lastCameraTime = frame.timestamp;
+              }
+            });
           }
-        });
-      } catch (_) {}
+        } catch (_) {}
+      }
+    } finally {
+      _isFetchingHttp = false;
     }
   }
 

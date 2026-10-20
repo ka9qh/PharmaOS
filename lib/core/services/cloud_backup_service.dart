@@ -142,11 +142,15 @@ class CloudBackupService {
     } catch (_) {}
 
     if (await dbFile.exists()) {
-      await dbFile.copy(backupFile.path);
+      final raw = await dbFile.readAsBytes();
+      final compressed = gzip.encode(raw);
+      await backupFile.writeAsBytes(compressed);
     } else {
       final currentDb = File(p.join(Directory.current.path, 'pharma_os.sqlite'));
       if (await currentDb.exists()) {
-        await currentDb.copy(backupFile.path);
+        final raw = await currentDb.readAsBytes();
+        final compressed = gzip.encode(raw);
+        await backupFile.writeAsBytes(compressed);
       }
     }
 
@@ -214,7 +218,7 @@ class CloudBackupService {
         ..fields['parse_mode'] = 'Markdown'
         ..files.add(await http.MultipartFile.fromPath('document', backupFile.path));
 
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 40));
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 60));
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
@@ -257,7 +261,14 @@ class CloudBackupService {
         await dbFile.copy(safetyCopy.path);
       }
 
-      await srcFile.copy(dbFile.path);
+      final bytes = await srcFile.readAsBytes();
+      // دعم فك ضغط GZIP التلقائي للنسخ الحديثة، مع دعم النسخ القديمة غير المضغوطة
+      if (bytes.length > 2 && bytes[0] == 0x1F && bytes[1] == 0x8B) {
+        final decompressed = gzip.decode(bytes);
+        await dbFile.writeAsBytes(decompressed);
+      } else {
+        await srcFile.copy(dbFile.path);
+      }
       return true;
     } catch (e) {
       debugPrint('Restore error: $e');
